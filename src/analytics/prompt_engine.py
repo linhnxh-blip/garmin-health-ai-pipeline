@@ -1,6 +1,45 @@
 import json
 from typing import Dict, Any, Optional
 
+from datetime import datetime
+
+TRAINING_STATUS_MAP = {
+    "RECOVERY": "Phục hồi (Recovery)",
+    "RECOVERY_2": "Phục hồi (Recovery)",
+    "MAINTAINING": "Duy trì (Maintaining)",
+    "MAINTAINING_2": "Duy trì (Maintaining)",
+    "PRODUCTIVE": "Hiệu quả (Productive)",
+    "PRODUCTIVE_2": "Hiệu quả (Productive)",
+    "PEAKING": "Đạt đỉnh (Peaking)",
+    "PEAKING_2": "Đạt đỉnh (Peaking)",
+    "OVERREACHING": "Quá tải (Overreaching)",
+    "OVERREACHING_2": "Quá tải (Overreaching)",
+    "UNPRODUCTIVE": "Không hiệu quả (Unproductive)",
+    "UNPRODUCTIVE_2": "Không hiệu quả (Unproductive)",
+    "DETRAINING": "Giảm thể lực (Detraining)",
+    "DETRAINING_2": "Giảm thể lực (Detraining)",
+    "NO_STATUS": "Chưa xác định",
+    "NO_STATUS_2": "Chưa xác định",
+}
+
+VIETNAMESE_DAYS = {
+    0: "Thứ Hai",
+    1: "Thứ Ba",
+    2: "Thứ Tư",
+    3: "Thứ Năm",
+    4: "Thứ Sáu",
+    5: "Thứ Bảy",
+    6: "Chủ Nhật"
+}
+
+def get_vietnamese_date_str(date_str: str) -> str:
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        day_name = VIETNAMESE_DAYS[dt.weekday()]
+        return f"{day_name}, {dt.strftime('%d/%m/%Y')}"
+    except Exception:
+        return date_str
+
 SYSTEM_PROMPT = """Bạn là một Chuyên gia Sinh lý học Thể thao & Chuyên gia Dinh dưỡng Hiệu suất cao (High-Performance Sports Physiologist & Precision Nutritionist).
 Nhiệm vụ của bạn là phân tích toàn diện dữ liệu sinh lý học hàng ngày từ thiết bị Garmin của vận động viên và đối chiếu trực tiếp với Baseline 30 ngày để đưa ra Báo cáo Sinh lý học & Kê đơn Dinh dưỡng - Vận động chuyên sâu.
 
@@ -12,8 +51,10 @@ HỒ SƠ VẬN ĐỘNG VIÊN:
 
 NGUYÊN TẮC THIẾT YẾU:
 1. TRUNG THỰC DỮ LIỆU (STRICT FACTUAL DATA): Tuyệt đối không tự suy diễn hoặc bịa ra các số liệu bị thiếu. Nếu trường dữ liệu ghi nhận là "KHÔNG CÓ DỮ LIỆU (NULL)", bạn phải ghi nhận là chưa đo lường được, không tự tính trung bình hoặc bịa con số.
-2. PHÂN TÍCH TƯƠNG QUAN ĐA BIẾN: Kết nối chặt chẽ HRV Overnight, RHR, Nhịp thở đêm, SpO2, Cấu trúc Giấc ngủ, Body Battery và Tải tập luyện 7 ngày.
-3. KÊ ĐƠN DINH DƯỠNG CÁ NHÂN HÓA: Kê đơn chính xác lượng Calo & Gram Macros (Carb/Protein/Fat) cùng thực đơn từng bữa lồng ghép các món ăn ưa thích của vận động viên (Thịt bò, hải sản, Sushi/Sashimi, Lẩu thanh đạm, Sữa chua Chobani, Nước khoáng kiềm Fujiwa).
+2. CHÍNH XÁC NGÀY VÀ THỨ TRONG TUẦN: Bắt buộc sử dụng đúng Thứ trong tuần được ghi rõ ở dữ liệu đầu vào. Tuyệt đối không tự nhầm lẫn giữa Thứ Bảy và Chủ Nhật.
+3. DIỄN GIẢI NGHĨA TIẾNG VIỆT RÕ RÀNG: Đối với Trạng thái tập luyện (Training Status), hãy giải thích rõ ý nghĩa tiếng Việt cho vận động viên (ví dụ: Phục hồi / Duy trì / Hiệu quả), tuyệt đối KHÔNG in các chuỗi mã hằng thô của Garmin như RECOVERY_2 hay MAINTAINING_2.
+4. PHÂN TÍCH TƯƠNG QUAN ĐA BIẾN: Kết nối chặt chẽ HRV Overnight, RHR, Nhịp thở đêm, SpO2, Cấu trúc Giấc ngủ, Body Battery và Tải tập luyện 7 ngày.
+5. KÊ ĐƠN DINH DƯỠNG CÁ NHÂN HÓA: Kê đơn chính xác lượng Calo & Gram Macros (Carb/Protein/Fat) cùng thực đơn từng bữa lồng ghép các món ăn ưa thích của vận động viên (Thịt bò, hải sản, Sushi/Sashimi, Lẩu thanh đạm, Sữa chua Chobani, Nước khoáng kiềm Fujiwa).
 
 BẮT BUỘC SỬ DỤNG CHÍNH XÁC CÁC THẺ TIÊU ĐỀ NÀY NÀY TRONG BÁO CÁO:
 
@@ -26,7 +67,7 @@ BẮT BUỘC SỬ DỤNG CHÍNH XÁC CÁC THẺ TIÊU ĐỀ NÀY NÀY TRONG BÁO
 [Đánh giá tỷ lệ Deep Sleep (mục tiêu >15-20% để hồi phục cơ bắp), REM Sleep, Awake duration. Hiệu suất nạp Body Battery (+ điểm sạc / giờ ngủ).]
 
 ### 🏃‍♂️ 3. Kê đơn Vận động & Tải Tập luyện Hôm nay:
-[Xác định trạng thái sẵn sàng (Training Readiness). Chỉ định bài tập cụ thể: Cự ly, thời gian, ngưỡng nhịp tim tối đa theo MAF (136 bpm), hoặc chuyển sang Active Recovery / Giãn cơ.]
+[Xác định trạng thái sẵn sàng (Training Readiness) và Trạng thái tập luyện (Training Status giải thích tiếng Việt). Chỉ định bài tập cụ thể cho Thứ trong tuần hiện tại: Cự ly, thời gian, ngưỡng nhịp tim tối đa theo MAF (136 bpm), hoặc chuyển sang Active Recovery / Giãn cơ.]
 
 ### 🍱 4. Kế hoạch Dinh dưỡng & Thực đơn Cá nhân hóa (Precision Nutrition):
 - **Mục tiêu Macro ngày hôm nay:** Ước tính nhu cầu Calo nạp vào dựa trên độ tiêu hao và mức phục hồi, phân bổ tỷ lệ Carb / Protein / Fat (tính bằng gram).
@@ -49,8 +90,10 @@ def _format_seconds(seconds: Optional[int]) -> str:
     minutes = (seconds % 3600) // 60
     return f"{hours}h {minutes}m ({seconds} giây)"
 
+
 def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
     target_date = baseline_data["target_date"]
+    date_vn = get_vietnamese_date_str(target_date)
     tm = baseline_data["target_metrics"]
     bm = baseline_data["metrics_baseline"]
     tl = baseline_data["training_load_7d"]
@@ -58,7 +101,7 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
     dr = baseline_data["date_range"]
 
     parts = []
-    parts.append(f"DỮ LIỆU SINH LÝ HỌC VẬN ĐỘNG VIÊN NGÀY: {target_date}")
+    parts.append(f"DỮ LIỆU SINH LÝ HỌC VẬN ĐỘNG VIÊN: {date_vn} ({target_date})")
     parts.append(f"Mẫu dữ liệu Baseline 30 ngày: {sample_size} ngày ({dr.get('start') or 'N/A'} đến {dr.get('end') or 'N/A'})\n")
 
     parts.append("--- CHỈ SỐ SINH LÝ HÔM NAY VS BASELINE 30 NGÀY ---")
@@ -84,7 +127,11 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
     parts.append(f"- Body Battery: Sạc = {_format_value(tm.get('body_battery_charged'))}, Xả = {_format_value(tm.get('body_battery_drained'))}, Cao nhất = {_format_value(tm.get('body_battery_highest'))}, Thấp nhất = {_format_value(tm.get('body_battery_lowest'))}")
     parts.append(f"- Training Readiness Score: {_format_value(tm.get('training_readiness_score'))}/100")
     parts.append(f"- Recovery Time Remaining: {_format_value(tm.get('recovery_time_hours'), 'giờ')}")
-    parts.append(f"- Training Status: {_format_value(tm.get('training_status'))}")
+
+    raw_ts = tm.get("training_status")
+    ts_display = TRAINING_STATUS_MAP.get(str(raw_ts).upper(), str(raw_ts).replace("_2", "")) if raw_ts else "KHÔNG CÓ DỮ LIỆU (NULL)"
+    parts.append(f"- Training Status (Trạng thái tập luyện): {ts_display} (Mã Garmin gốc: {raw_ts or 'NULL'})")
+
     parts.append(f"- VO2 Max: {_format_value(tm.get('vo2_max'))}")
     parts.append(f"- Độ lệch nhiệt độ da (Skin Temp Deviation): {_format_value(tm.get('skin_temp_deviation'), '°C')}")
 

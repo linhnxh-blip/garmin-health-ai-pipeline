@@ -238,7 +238,7 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         "completion_tokens": completion_tokens
     }
 
-from .prompt_engine import SYSTEM_PROMPT, build_advanced_user_prompt
+from .prompt_engine import SYSTEM_PROMPT, build_advanced_user_prompt, get_vietnamese_date_str
 
 def generate_health_analysis(
     baseline_data: Dict[str, Any],
@@ -254,7 +254,8 @@ def generate_health_analysis(
       - completion_tokens: int
     """
     target_date = baseline_data["target_date"]
-    system_prompt = SYSTEM_PROMPT.format(date=target_date)
+    date_vn = get_vietnamese_date_str(target_date)
+    system_prompt = SYSTEM_PROMPT.format(date=date_vn)
     user_prompt = build_advanced_user_prompt(baseline_data)
     raw_prompt = f"[SYSTEM PROMPT]\n{system_prompt}\n\n[USER PROMPT]\n{user_prompt}"
 
