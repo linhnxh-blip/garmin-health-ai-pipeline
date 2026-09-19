@@ -157,6 +157,9 @@ def fetch_and_store_daily_data(
                         "calories": act.get("calories"),
                         "avg_hr": act.get("averageHR"),
                         "max_hr": act.get("maxHR"),
+                        "avg_cadence": act.get("averageRunningCadenceInStepsPerMinute") or act.get("averageCadence"),
+                        "gct_balance": act.get("avgGroundContactBalance") or act.get("groundContactBalance") or act.get("avgGroundContactTimeBalance"),
+                        "stride_length_cm": act.get("averageStrideLength"),
                         "aerobic_training_effect": act.get("aerobicTrainingEffect")
                     })
             if act_summary_list:
