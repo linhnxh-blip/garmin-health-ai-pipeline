@@ -222,30 +222,20 @@ def sync_browser(date, curl, cookie):
     except Exception as e:
         click.echo(f"❌ Browser sync failed: {e}", err=True)
 
-@cli.command("ble-scan")
-@click.option("--duration", default=10, type=int, help="Scan duration in seconds (default: 10)")
-def ble_scan(duration):
-    """Scan for nearby Bluetooth Low Energy (BLE) scales (OMRON VIVA / HBF-222T)."""
-    import asyncio
-    from scripts.ble_omron_scanner import scan_omron_ble
-    click.echo(f"📡 Starting BLE Discovery Scan for {duration} seconds...")
-    asyncio.run(scan_omron_ble(duration=duration))
-
-@cli.command("ble-listen")
-@click.option("--mac", default=None, help="Target OMRON scale MAC address (overrides OMRON_MAC_ADDRESS in .env)")
-@click.option("--timeout", default=30, type=int, help="Connection timeout in seconds (default: 30)")
-@click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
-def ble_listen(mac, timeout, target_date):
-    """Listen for live BLE measurements from OMRON VIVA scale, store in SQLite & sync to Garmin Connect."""
-    import asyncio
-    from src.ingestion.omron_ble import listen_and_sync_omron_ble
-    date_str = target_date or datetime.now().strftime("%Y-%m-%d")
-    click.echo(f"📡 Connecting to OMRON BLE Scale for date {date_str}...")
+@cli.command("import-apple-health")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--sync-garmin/--no-sync-garmin", default=True, help="Sync latest weight to Garmin Connect cloud (default: True)")
+def import_apple_health(file_path, sync_garmin):
+    """Import weight, body fat & health metrics from Apple Health export file (export.zip or export.xml)."""
+    from src.importers.apple_health_importer import import_apple_health_export
+    click.echo(f"🍎 Importing Apple Health data from: {file_path}...")
     try:
-        res = asyncio.run(listen_and_sync_omron_ble(mac_address=mac, timeout=timeout, target_date=date_str))
-        click.echo(f"✅ BLE Sync Complete: {res}")
-    except Exception as exc:
-        click.echo(f"❌ BLE Listen failed: {exc}", err=True)
+        res = import_apple_health_export(file_path, sync_to_garmin=sync_garmin)
+        click.echo(f"✅ Apple Health Import Complete: {res['processed_days']} days updated into SQLite.")
+        if res.get("latest_weight"):
+            click.echo(f"   - Latest Weight Recorded: {res['latest_weight']} kg ({res.get('latest_date')})")
+    except Exception as e:
+        click.echo(f"❌ Apple Health import failed: {e}", err=True)
 
 if __name__ == "__main__":
     cli()
