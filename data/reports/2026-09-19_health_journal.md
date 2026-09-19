@@ -3,68 +3,70 @@
 ---
 
 ### 🧠 1. Trạng thái Thần kinh Thực vật & Hô hấp Đêm:
-* **Hệ Thần kinh Tự chủ (ANS) & HRV Overnight:** 
-  Chỉ số HRV đêm qua đạt **43.0 ms** (Trạng thái Cân bằng - BALANCED), tăng **+11.25%** so với Mức nền Baseline 30 ngày (38.65 ms). Tương quan với nhịp tim nghỉ **RHR giảm xuống 59 bpm** (thấp hơn trung bình 30 ngày là 60.9 bpm) và Mức độ Stress trung bình đêm cực thấp **18** (so với baseline 40.73). Sự kết hợp này cho thấy hệ thần kinh đối giao cảm (Parasympathetic) đang chiếm ưu thế hoàn toàn, giúp cơ thể thoát khỏi trạng thái giao cảm quá tải sau các ngày tập luyện trước đó.
-* **Hô hấp & Nồng độ Oxy trong máu (SpO2):** 
-  Nhịp thở đêm duy trì ổn định ở mức **15.0 brpm** (dao động từ 10.0 - 23.0 brpm). Nồng độ SpO2 trung bình đạt **94.0%**, tuy nhiên có thời điểm giảm xuống mức tối thiểu **84.0%**. Mặc dù chỉ số trung bình nằm trong ngưỡng an toàn, mức sụt giảm SpO2 cục bộ (84%) cần theo dõi thêm để loại trừ khả năng xẹp đường thở tạm thời do tư thế ngủ hoặc độ ẩm không khí tại khu vực Minh Khai, Hà Nội.
-* **Ghi nhận chỉ số bổ trợ:** Độ lệch nhiệt độ da ghi nhận **KHÔNG CÓ DỮ LIỆU (NULL)**, do đó không có căn cứ sinh lý để đánh giá các phản ứng viêm toàn thân hoặc nhiễm trùng cấp tính qua nhiệt độ bề mặt.
+- **Hệ thần kinh tự chủ (HRV Overnight & RHR):** 
+  - Chỉ số HRV đêm qua đạt **43.0 ms** (Trạng thái Cân bằng - BALANCED), tăng **+11.25%** so với mức trung bình Baseline 30 ngày (38.65 ms).
+  - Nhịp tim khi nghỉ ngơi (RHR) hạ xuống **59 bpm**, thấp hơn 1.9 bpm so với Baseline (60.9 bpm).
+  - Mức độ Stress trung bình giảm sâu xuống **18** (so với Baseline 40.73). 
+  - *Đánh giá:* Sự kết hợp giữa HRV tăng, RHR giảm và chỉ số Stress hạ thấp phản ánh hệ thần kinh phó giao cảm (Parasympathetic - phanh hãm) đang chiếm ưu thế vượt trội, tạo điều kiện thuận lợi cho quá trình hồi phục mô cơ và giải phóng áp lực tích lũy sau các chu kỳ vận động trước đó.
+- **Hô hấp & Nồng độ oxy trong máu (Respiration & SpO2):**
+  - Nhịp thở ban đêm trung bình ổn định ở mức **15.0 brpm**. Tuy nhiên, có biên độ dao động từ **10.0 brpm** đến đỉnh ngắn hạn **23.0 brpm**.
+  - Nồng độ oxy trong máu (SpO2) trung bình ở mức an toàn sinh lý **94.0%**, nhưng ghi nhận mức đáy giảm cục bộ xuống **84.0%**.
+  - *Lưu ý lâm sàng:* Sự sụt giảm SpO2 ngắn hạn xuống 84% đi kèm mức thở cực đại 23 brpm có thể xuất phát từ tư thế ngủ (gập cổ, nằm sấp hoặc tỳ đè lên cổ tay đeo đồng hồ khiến cảm biến quang học sai lệch) hoặc biểu hiện ngáy/ngưng thở khi ngủ thoáng qua. Không có dấu hiệu sốt hay viêm nhiễm cấp tính (chỉ số Độ lệch nhiệt độ da ban đêm: **KHÔNG CÓ DỮ LIỆU (NULL)** nên chưa ghi nhận biến động nhiệt).
 
 ---
 
 ### 💤 2. Bóc tách Cấu trúc Giấc ngủ & Tái tạo Sinh học:
-* **Thời lượng & Điểm số Giấc ngủ:** 
-  Điểm số giấc ngủ đạt **80/100**, vượt trội so với mức trung bình 30 ngày (63.19 điểm). Tổng thời gian ngủ đạt **8 giờ 15 phút**, đảm bảo lượng thời lượng cần thiết cho quá trình tái tạo năng lượng toàn diện.
-* **Phân tích Cấu trúc Giấc ngủ (Sleep Architecture):**
-  * **Deep Sleep (Ngủ sâu):** Đạt **50 phút** (~10.1% tổng thời gian ngủ). Mặc dù thời lượng đạt mức chấp nhận được, tỷ lệ % vẫn hơi thấp hơn ngưỡng mục tiêu lý tưởng (15-20%) đối với một vận động viên 44 tuổi cần phục hồi vi tổn thương cơ bắp.
-  * **REM Sleep (Ngủ mơ):** Đạt **1 giờ 36 phút** (~19.4%), hỗ trợ xuất sắc cho việc củng cố trí nhớ vận động và giải tỏa căng thẳng thần kinh (Cognitive Recovery).
-  * **Light Sleep (Ngủ nông) & Awake:** Ngủ nông chiếm **5 giờ 49 phút** (~70.5%); thời gian tỉnh giấc giữa đêm rất ngắn chỉ **15 phút** (~3%), cho thấy tính liên tục của giấc ngủ rất cao.
-* **Sạc Năng lượng Body Battery:** 
-  Body Battery được sạc **+63 điểm**, đẩy mức năng lượng đỉnh lên **72/100** (hồi phục mạnh mẽ từ mức đáy 9/100 của ngày hôm trước). Hiệu suất nạp đạt ~7.6 điểm/giờ ngủ, minh chứng cho một giấc ngủ có chất lượng phục hồi sinh học cao.
+- **Thời lượng và Hiệu suất:** Điểm giấc ngủ đạt **80/100** (vượt trội so với Baseline 30 ngày là 63.19). Tổng thời gian ngủ dài: **8 giờ 15 phút**, thời gian thức chập chờn chỉ vỏn vẹn **15 phút** (3% - rất tốt).
+- **Phân bổ các pha ngủ:**
+  - **Ngủ sâu (Deep Sleep):** Đạt **50 phút (~10.1%)**. Mặc dù tổng thời gian ngủ tốt, tỷ lệ Deep Sleep vẫn dưới ngưỡng mục tiêu tối ưu của vận động viên (15 - 20%). Điều này cho thấy sự tái tạo vi cấu trúc sợi cơ và tiết hormone tăng trưởng (GH) chỉ diễn ra ở mức trung bình.
+  - **Ngủ mơ (REM Sleep):** Đạt **1 giờ 36 phút (~19.4%)**, nằm trong dải sinh lý lý tưởng (20-25%), hỗ trợ tuyệt vời cho việc phục hồi hệ thần kinh trung ương và củng cố trí nhớ vận động.
+  - **Ngủ nông (Light Sleep):** Chiếm đa số với **5 giờ 49 phút (~70.5%)**.
+- **Hiệu suất nạp Body Battery:**
+  - Nạp ròng **+63 điểm** trong đêm, đẩy mức năng lượng từ đáy **9** chạm đỉnh **72**. Hiệu suất sạc đạt xấp xỉ **7.6 điểm/giờ ngủ**, cho thấy pin sinh học đã được tái nạp đáng kể nhưng chưa đạt mốc tối đa (85 - 100) do giai đoạn Deep Sleep chưa thực sự kéo dài.
 
 ---
 
 ### 🏃‍♂️ 3. Kê đơn Vận động & Tải Tập luyện Hôm nay:
-* **Đánh giá Trạng thái Sẵn sàng (Training Readiness & Status):**
-  * **Training Readiness:** **62/100** (Mức Sẵn sàng Trung bình - Khá).
-  * **Thời gian phục hồi còn lại:** Chỉ còn **1 giờ** (Cơ thể gần như đã xả hết tải dồn nén).
-  * **Training Status (Trạng thái tập luyện):** **Phục hồi (Recovery)** *(chuyển ngữ từ mã gốc RECOVERY_2)*.
-  * **Tải tích lũy 7 ngày:** 2,877 kcal và 52,369 bước chân.
-  * *Lưu ý dữ liệu thực tế hôm nay:* Calo vận động Active Calories ghi nhận **0 kcal** và Số bước chân Total Steps ghi nhận **KHÔNG CÓ DỮ LIỆU (NULL)**.
-* **Chỉ định Bài tập cho Thứ Bảy (19/09/2026):**
-  Do trạng thái sinh lý đang ở nhịp Phục hồi (Recovery) và điểm sẵn sàng ở mức 62, hôm nay **KHÔNG** khuyến nghị các bài tập gym gánh đùi nặng hoặc chạy biến tốc (Interval/Tempo).
-  * **Lựa chọn 1 (Ưu tiên - Chạy nhẹ MAF):** Bài chạy Base Aerobic duy trì sức bền.
-    * **Cự ly / Thời gian:** 5 km - 6 km (hoặc 35 - 45 phút).
-    * **Ngưỡng nhịp tim (MAF Heart Rate):** Giới hạn tối đa **136 bpm** (Công thức MAF = 180 - 44 tuổi). Duy trì nhịp tim mục tiêu trong khoảng **120 - 130 bpm** để tối ưu hóa quá trình oxy hóa mỡ và không làm tích tụ acid lactic.
-  * **Lựa chọn 2 (Active Recovery):** 30 phút giãn cơ sâu (Stretching), lăn bọt (Foam Rolling) giải phóng cơ đùi/bắp chân, kết hợp bài tập Core nhẹ nhàng.
+- **Sẵn sàng Vận động (Training Readiness) & Trạng thái Tập luyện (Training Status):**
+  - Training Readiness: **62/100** (Mức Sẵn sàng Trung bình - Khá).
+  - Thời gian hồi phục còn lại (Recovery Time): **1 giờ** (Cơ thể đã hoàn tất chu kỳ hồi phục chính).
+  - Trạng thái tập luyện (Training Status): **Phục hồi (Recovery)**. Cơ thể bạn đang được tạo điều kiện giảm áp lực tập luyện để hấp thu khối lượng vận động 7 ngày qua (tải 7 ngày đạt 2,877 kcal qua 2 bài tập dài hơn 3.5 giờ).
+  - *Dữ liệu vận động hôm nay:* Active Calories: **0 kcal**; Tổng số bước (Total Steps): **KHÔNG CÓ DỮ LIỆU (NULL)** (chưa đồng bộ hoặc chưa di chuyển nhiều).
+- **Chỉ định Vận động cho Thứ Bảy:**
+  - Hôm nay không phải ngày để đẩy cường độ (No High-Intensity, No Tempo). Mục tiêu là kích thích tuần hoàn máu nhẹ nhàng để đào thải chuyển hóa tồn đọng mà không gây stress lên hệ tim mạch.
+  - **Bài tập khuyến nghị:** **Chạy nhẹ phục hồi theo phương pháp MAF (MAF Active Recovery Run)** kết hợp giãn cơ.
+    - *Thời lượng:* 30 - 40 phút.
+    - *Cự ly dự kiến:* 4 - 5 km.
+    - *Kiểm soát nhịp tim trần MAF:* Tuyệt đối không vượt quá **136 bpm** (180 - 44 tuổi). Duy trì nhịp tim tối ưu trong dải **120 - 130 bpm** (Zone 2 nhẹ nhàng).
+    - *Địa điểm:* Tuyến đường bằng phẳng, thoáng đãng quanh khu vực Minh Khai / bờ sông Hồng hoặc chạy máy để kiểm soát hoàn toàn nhịp tim.
+    - *Sau bài tập:* Dành 15 phút giãn cơ tĩnh (Hamstring, Calves, IT Band) và bọt lăn (Foam Rolling) cho phần thân dưới.
 
 ---
 
 ### 🍱 4. Kế hoạch Dinh dưỡng & Thực đơn Cá nhân hóa (Precision Nutrition):
 
-#### **Mục tiêu Macro ngày hôm nay (Chế độ Phục hồi & Chạy MAF nhẹ):**
-* **Tổng Năng lượng Khuyến nghị:** **2,150 - 2,250 kcal**
-* **Protein:** **135g - 145g** (~1.8g/kg trọng lượng - hỗ trợ bù đắp cho tỷ lệ Deep Sleep 10.1% nhằm tối ưu tổng hợp protein cơ bắp).
-* **Carbohydrate:** **230g - 250g** (Nạp lại Glycogen cho cơ bắp ở mức vừa phải).
-* **Fat (Chất béo tốt):** **60g - 65g** (Hỗ trợ sản sinh hormone và giảm viêm).
+- **Mục tiêu Macro ngày hôm nay (Thứ Bảy - Ngày duy trì & chạy nhẹ phục hồi):**
+  - **Tổng năng lượng mục tiêu:** **2,200 - 2,350 kcal** (Bảo toàn khối cơ, đáp ứng mức trao đổi chất cơ bản BMR + bài chạy phục hồi nhẹ).
+  - **Protein:** **140 - 150g** (~25% tổng năng lượng, tương đương ~1.8g - 2.0g/kg thể trọng) nhằm thúc đẩy sửa chữa mô cơ còn thiếu hụt từ pha Deep Sleep ngắn.
+  - **Carbohydrate:** **250 - 270g** (~45% tổng năng lượng) từ nguồn carb phức hợp, vừa đủ bù glycogen dự trữ cho bài chạy dài cuối tuần kế tiếp mà không gây tích mỡ.
+  - **Fat:** **65 - 75g** (~30% tổng năng lượng), ưu tiên chất béo không bão hòa đơn/đa (Omega-3 từ hải sản) để kháng viêm.
 
-#### **Thực đơn gợi ý từng bữa:**
-
-* **🥣 Bữa sáng (Phục hồi đường ruột & Cung cấp Protein hấp thu nhanh):**
-  * 1 hũ **Sữa chua Hy Lạp Chobani** (nguyên vị hoặc dâu tây).
-  * 30g Yến mạch cán vỡ + 10g hạt hạnh nhân hoặc quả óc chó + 1/2 quả chuối chín.
-  * 1 ly **Nước khoáng kiềm Fujiwa** (350ml) ấm ngay sau khi ngủ dậy.
-
-* **🥩 Bữa trưa (Nạp năng lượng sinh học & Sắt cho hồng cầu):**
-  * 200g **Thịt bò thăn** áp chảo (hoặc xào với ớt chuông, hành tây và dầu olive).
-  * 1.5 bát Cơm gạo lứt (hoặc cơm trắng nếu tập luyện xong).
-  * 1 đĩa Rau bông cải xanh (súp lơ) luộc hoặc cải kale xào tỏi nhẹ.
-
-* **🍣 Bữa tối (Tái tạo cơ bắp nhẹ bụng & Giảm Stress thần kinh):**
-  * **Phương án A (Đồ Nhật):** 1 Combo **Sashimi tổng hợp** (Cá hồi tươi, cá ngừ, bạch tuộc khoảng 200g - 250g) + 1 bát súp Miso + Salad rong biển trứng cá ebiko.
-  * **Phương án B (Lẩu Việt Nam thanh đạm):** Lẩu nấm hải sản thanh đạm (tôm, mực, ngao, cá hồi) ăn kèm nhiều rau cải cúc, nấm kim châm, nấm đùi gà và một lượng nhỏ bún tươi.
-
-* **💧 Bổ sung Nước, Điện giải & Vi chất Chuyển hóa:**
-  * **Nước uống trong ngày:** Sử dụng **2.5 - 3.0 Lít Nước khoáng kiềm Fujiwa** phân bổ đều từ sáng đến tối để trung hòa acid lactic tích tụ và tối ưu hóa môi trường kiềm trong cơ thể.
-  * **Thực phẩm bổ sung buổi tối (trước khi ngủ 45 phút):**
-    * **Magnesium Glycinate (300mg - 400mg):** Giúp thư giãn hệ thần kinh trung ương, hỗ trợ kéo dài thời lượng **Deep Sleep** cho đêm tiếp theo.
-    * **Kẽm (Zinc Picolinate 15mg - 20mg):** Tăng cường phục hồi tế bào và tối ưu hóa nồng độ testosterone nội sinh.
+- **Thực đơn gợi ý từng bữa:**
+  + **Bữa sáng:**
+    - 200g **Sữa chua Hy Lạp Chobani** (nguồn protein tinh khiết, men vi sinh đường ruột).
+    - 40g yến mạch cán dẹt ngâm qua đêm (Overnight oats) + 1 thìa hạt chia.
+    - 1 quả chuối tiêu hoặc nửa quả bơ tươi (bổ sung Kali giúp giãn cơ).
+  + **Bữa trưa (Giàu năng lượng, kích hoạt đồng hóa):**
+    - 180g - 200g **Thịt bò thăn áp chảo** với dầu olive và tỏi (cung cấp Creatine tự nhiên, sắt heme và protein chất lượng cao).
+    - 1 chén cơm gạo lứt (khoảng 150g chín).
+    - 1 đĩa lớn măng tây hoặc súp lơ xanh hấp/xào nhẹ (giàu chất chống oxy hóa Sulforaphane).
+  + **Bữa phụ (Trước bài chạy nhẹ MAF 60-90 phút):**
+    - 1 lát bánh mì nguyên cám quét bơ đậu phộng mỏng hoặc 1 quả táo.
+  + **Bữa tối (Thanh đạm, phục hồi tế bào & hỗ trợ giấc ngủ sâu):**
+    - Lựa chọn 1 trong 2 món yêu thích:
+      - *Phương án A (Đồ Nhật):* Set **Sashimi cá hồi, cá ngừ và sò đỏ** (~200g) kết hợp 4-6 viên sushi hải sản, ăn kèm súp Miso rong biển ấm và salad rong biển mè rang.
+      - *Phương án B (Lẩu Việt Nam thanh đạm tại nhà):* Nước dùng thanh ngọt nấu từ củ quả; nhúng 150g bắp bò hoa, tôm sú tươi, mực lá cùng nhiều nấm kim châm, nấm đông cô, rau cải xoong, mồng tơi; ăn kèm 1 vắt mì lứt hoặc bún tươi.
+  + **Bổ sung Nước & Vi chất Điện giải:**
+    - **Nước khoáng kiềm:** Bổ sung tối thiểu **2.5 - 3.0 lít nước khoáng kiềm Fujiwa** dàn đều trong ngày để trung hòa acid lactic dư thừa và tối ưu hóa độ ẩm tế bào.
+    - **Vi chất tối ưu trước khi ngủ (30-45 phút):** 
+      - Bổ sung **300 - 400mg Magie (dạng Glycinate hoặc Malate)** và **15mg Kẽm (Zinc)**. Sự kết hợp này giúp thư giãn hệ thần kinh trung ương, giãn mạch máu, kích thích pha Ngủ sâu (Deep Sleep) kéo dài hơn và nâng biên độ HRV lên mốc cao hơn vào đêm nay.

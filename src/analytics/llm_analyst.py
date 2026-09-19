@@ -150,15 +150,26 @@ def build_user_prompt(baseline_data: Dict[str, Any]) -> str:
     return "\n".join(prompt_parts)
 
 def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-    """Call Google Gemini API using google-genai SDK with exponential backoff retry."""
+    """Call Google Gemini API using google-genai SDK with exponential backoff retry & instant model fallback."""
     api_key = settings.gemini_api_key
     if not api_key:
         raise ValueError("GEMINI_API_KEY is not configured in .env")
 
-    model_name = settings.gemini_model or "gemini-3.6-flash"
-    candidate_models = [model_name, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+    # Candidate models in order of priority & quota availability
+    default_candidates = [
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-pro",
+        "gemini-flash-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-flash-lite-latest",
+        "gemini-3.6-flash"
+    ]
+    env_model = (settings.gemini_model or "").strip()
+    raw_candidates = ([env_model] if env_model else []) + default_candidates
     seen = set()
-    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    models_to_try = [m for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
     from google import genai
     from google.genai import types
@@ -195,17 +206,25 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
             except Exception as exc:
                 last_err = exc
                 err_str = str(exc)
+                err_lower = err_str.lower()
                 print(f"⚠️ Gemini API attempt {attempt}/{max_retries} failed for model '{model}': {exc}")
-                if "404" in err_str or "not found" in err_str.lower() or "503" in err_str or "unavailable" in err_str.lower():
-                    # Move to next candidate model if current model is unavailable or 404
-                    if attempt == max_retries:
-                        print(f"ℹ️ Model '{model}' unavailable/error, trying next candidate model...")
-                    time.sleep(1)
-                elif attempt < max_retries:
+
+                # If rate-limited (429 RESOURCE_EXHAUSTED / Quota limit), immediately fallback to next model
+                if "429" in err_str or "resource_exhausted" in err_lower or "quota" in err_lower:
+                    print(f"🔄 Model '{model}' hit 429 Quota Exhausted. Skipping retries for '{model}' and switching to next model...")
+                    break
+
+                # If unavailable (503 / 404), fallback to next model immediately
+                if "404" in err_str or "not found" in err_lower or "503" in err_str or "unavailable" in err_lower:
+                    print(f"🔄 Model '{model}' unavailable/overloaded (503/404). Switching to next candidate model...")
+                    break
+
+                # For transient network errors, retry up to max_retries
+                if attempt < max_retries:
                     time.sleep(delay)
                     delay *= 2
 
-    raise RuntimeError(f"All Gemini API attempts failed. Last error: {last_err}")
+    raise RuntimeError(f"All Gemini API candidate models failed. Last error: {last_err}")
 
 def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
     """Call OpenAI API using openai SDK."""
