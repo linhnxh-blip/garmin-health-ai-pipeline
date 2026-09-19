@@ -222,5 +222,30 @@ def sync_browser(date, curl, cookie):
     except Exception as e:
         click.echo(f"❌ Browser sync failed: {e}", err=True)
 
+@cli.command("ble-scan")
+@click.option("--duration", default=10, type=int, help="Scan duration in seconds (default: 10)")
+def ble_scan(duration):
+    """Scan for nearby Bluetooth Low Energy (BLE) scales (OMRON VIVA / HBF-222T)."""
+    import asyncio
+    from scripts.ble_omron_scanner import scan_omron_ble
+    click.echo(f"📡 Starting BLE Discovery Scan for {duration} seconds...")
+    asyncio.run(scan_omron_ble(duration=duration))
+
+@cli.command("ble-listen")
+@click.option("--mac", default=None, help="Target OMRON scale MAC address (overrides OMRON_MAC_ADDRESS in .env)")
+@click.option("--timeout", default=30, type=int, help="Connection timeout in seconds (default: 30)")
+@click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
+def ble_listen(mac, timeout, target_date):
+    """Listen for live BLE measurements from OMRON VIVA scale, store in SQLite & sync to Garmin Connect."""
+    import asyncio
+    from src.ingestion.omron_ble import listen_and_sync_omron_ble
+    date_str = target_date or datetime.now().strftime("%Y-%m-%d")
+    click.echo(f"📡 Connecting to OMRON BLE Scale for date {date_str}...")
+    try:
+        res = asyncio.run(listen_and_sync_omron_ble(mac_address=mac, timeout=timeout, target_date=date_str))
+        click.echo(f"✅ BLE Sync Complete: {res}")
+    except Exception as exc:
+        click.echo(f"❌ BLE Listen failed: {exc}", err=True)
+
 if __name__ == "__main__":
     cli()
