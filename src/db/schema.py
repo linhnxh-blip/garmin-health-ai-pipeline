@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     recovery_time_hours INTEGER,
     training_status TEXT,
     skin_temp_deviation REAL,
+    weight_kg REAL,
+    body_fat_pct REAL,
+    muscle_mass_pct REAL,
+    visceral_fat INTEGER,
     activities_summary TEXT,
     raw_sync_timestamp DATETIME,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -116,10 +120,14 @@ INSERT INTO daily_metrics (
     recovery_time_hours,
     training_status,
     skin_temp_deviation,
+    weight_kg,
+    body_fat_pct,
+    muscle_mass_pct,
+    visceral_fat,
     activities_summary,
     raw_sync_timestamp,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(date) DO UPDATE SET
     sleep_score = COALESCE(excluded.sleep_score, daily_metrics.sleep_score),
     sleep_duration_seconds = COALESCE(excluded.sleep_duration_seconds, daily_metrics.sleep_duration_seconds),
@@ -150,6 +158,10 @@ ON CONFLICT(date) DO UPDATE SET
     recovery_time_hours = COALESCE(excluded.recovery_time_hours, daily_metrics.recovery_time_hours),
     training_status = COALESCE(excluded.training_status, daily_metrics.training_status),
     skin_temp_deviation = COALESCE(excluded.skin_temp_deviation, daily_metrics.skin_temp_deviation),
+    weight_kg = COALESCE(excluded.weight_kg, daily_metrics.weight_kg),
+    body_fat_pct = COALESCE(excluded.body_fat_pct, daily_metrics.body_fat_pct),
+    muscle_mass_pct = COALESCE(excluded.muscle_mass_pct, daily_metrics.muscle_mass_pct),
+    visceral_fat = COALESCE(excluded.visceral_fat, daily_metrics.visceral_fat),
     activities_summary = COALESCE(excluded.activities_summary, daily_metrics.activities_summary),
     raw_sync_timestamp = COALESCE(excluded.raw_sync_timestamp, daily_metrics.raw_sync_timestamp),
     updated_at = CURRENT_TIMESTAMP;

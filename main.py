@@ -20,11 +20,60 @@ from src.analytics.baseline import calculate_baseline
 from src.analytics.llm_analyst import generate_health_analysis
 from src.analytics.report_manager import save_report_to_db, export_report_to_file
 from src.ingestion.browser_session_client import fetch_and_store_daily_data_browser
+from src.ingestion.garmin_client import get_garmin_client
 
 @click.group()
 def cli():
     """Garmin Health AI Pipeline CLI Tool"""
     pass
+
+@cli.command("log-weight")
+@click.argument("weight_kg", type=float)
+@click.option("--fat", type=float, default=None, help="Body fat percentage (%)")
+@click.option("--muscle", type=float, default=None, help="Muscle mass percentage (%) or kg")
+@click.option("--visceral", type=int, default=None, help="Visceral fat rating (1-30)")
+@click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
+def log_weight(weight_kg, fat, muscle, visceral, target_date):
+    """Log body weight & body composition metrics (from OMRON VIVA scale or manual input) and sync to Garmin Connect."""
+    date_str = target_date or datetime.now().strftime("%Y-%m-%d")
+    click.echo(f"⚖️ Logging body weight ({weight_kg} kg) for date: {date_str}...")
+
+    # Ensure database schema & migrations are initialized
+    init_db()
+
+    # 1. Update SQLite database (daily_metrics table)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO daily_metrics (date, weight_kg, body_fat_pct, muscle_mass_pct, visceral_fat, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(date) DO UPDATE SET
+                weight_kg = excluded.weight_kg,
+                body_fat_pct = COALESCE(excluded.body_fat_pct, daily_metrics.body_fat_pct),
+                muscle_mass_pct = COALESCE(excluded.muscle_mass_pct, daily_metrics.muscle_mass_pct),
+                visceral_fat = COALESCE(excluded.visceral_fat, daily_metrics.visceral_fat),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (date_str, weight_kg, fat, muscle, visceral)
+        )
+        conn.commit()
+    click.echo(f"✅ Saved body composition to SQLite database (`daily_metrics`): Weight={weight_kg}kg, Fat={fat}%, Muscle={muscle}%, VisceralFat={visceral}")
+
+    # 2. Sync to Garmin Connect if session is available
+    try:
+        client = get_garmin_client()
+        iso_timestamp = f"{date_str}T08:00:00.000Z"
+        client.add_body_composition(
+            timestamp=iso_timestamp,
+            weight=weight_kg,
+            percent_fat=fat,
+            muscle_mass=muscle,
+            visceral_fat_rating=visceral
+        )
+        click.echo(f"✅ Successfully synced weight ({weight_kg} kg) to Garmin Connect!")
+    except Exception as exc:
+        click.echo(f"ℹ️ Weight recorded locally in SQLite database. (Garmin Connect sync notice: {exc})")
 
 @cli.command()
 @click.option('--days', default=30, type=int, help='Number of historical days to backfill from yesterday (default: 30)')

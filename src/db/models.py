@@ -36,6 +36,10 @@ class DailyMetrics(BaseModel):
     recovery_time_hours: Optional[int] = Field(default=None, description="Remaining recovery time in hours")
     training_status: Optional[str] = Field(default=None, description="Training status string e.g. PRODUCTIVE, RECOVERY, MAINTAINING")
     skin_temp_deviation: Optional[float] = Field(default=None, description="Overnight skin temperature deviation in degrees")
+    weight_kg: Optional[float] = Field(default=None, description="Body weight in kg")
+    body_fat_pct: Optional[float] = Field(default=None, description="Body fat percentage (%)")
+    muscle_mass_pct: Optional[float] = Field(default=None, description="Muscle mass percentage (%) or kg")
+    visceral_fat: Optional[int] = Field(default=None, description="Visceral fat rating (1-30)")
     activities_summary: Optional[str] = Field(default=None, description="JSON string of activities recorded on date")
     raw_sync_timestamp: Optional[str] = Field(default=None, description="Raw sync ISO timestamp")
     updated_at: Optional[str] = Field(default=None, description="Record last update ISO timestamp")
@@ -72,6 +76,10 @@ class DailyMetrics(BaseModel):
             self.recovery_time_hours,
             self.training_status,
             self.skin_temp_deviation,
+            self.weight_kg,
+            self.body_fat_pct,
+            self.muscle_mass_pct,
+            self.visceral_fat,
             self.activities_summary,
             self.raw_sync_timestamp,
             self.updated_at or datetime.now().isoformat()

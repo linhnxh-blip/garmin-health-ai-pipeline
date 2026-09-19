@@ -240,6 +240,34 @@ def fetch_and_store_daily_data(
         if verbose:
             print(f"⚠️ Warning: Failed to fetch Training Status for {target_date}: {e}")
 
+    # 10. Fetch Body Composition / Weight
+    try:
+        weight_data = garmin_client.get_body_composition(target_date)
+        if weight_data and isinstance(weight_data, dict):
+            raw_payloads.append((target_date, "BODY_COMPOSITION", json.dumps(weight_data)))
+            weight_list = weight_data.get("dateWeightList") or []
+            if not weight_list and weight_data.get("totalAverage"):
+                avg_item = weight_data["totalAverage"]
+                if isinstance(avg_item, dict) and avg_item.get("weight") is not None:
+                    weight_list = [avg_item]
+
+            if weight_list and isinstance(weight_list, list):
+                w_item = weight_list[-1]
+                if isinstance(w_item, dict):
+                    w_val = w_item.get("weight")
+                    if w_val is not None:
+                        w_kg = float(w_val) / 1000.0 if float(w_val) > 200 else float(w_val)
+                        metrics["weight_kg"] = round(w_kg, 2)
+                    if w_item.get("bodyFat") is not None or w_item.get("bodyFatPercentage") is not None:
+                        metrics["body_fat_pct"] = float(w_item.get("bodyFat") or w_item.get("bodyFatPercentage"))
+                    if w_item.get("muscleMass") is not None or w_item.get("muscleMassPercentage") is not None:
+                        metrics["muscle_mass_pct"] = float(w_item.get("muscleMass") or w_item.get("muscleMassPercentage"))
+                    if w_item.get("visceralFat") is not None:
+                        metrics["visceral_fat"] = int(w_item["visceralFat"])
+    except Exception as e:
+        if verbose:
+            print(f"⚠️ Warning: Failed to fetch Body Composition for {target_date}: {e}")
+
     # Validate with Pydantic DailyMetrics model
     daily_model = DailyMetrics(**metrics)
 

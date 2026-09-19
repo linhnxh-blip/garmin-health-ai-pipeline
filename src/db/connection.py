@@ -54,6 +54,14 @@ def init_db(db_path: Optional[Path] = None) -> Path:
             cursor.execute("ALTER TABLE daily_metrics ADD COLUMN training_status TEXT")
         if "skin_temp_deviation" not in dm_cols:
             cursor.execute("ALTER TABLE daily_metrics ADD COLUMN skin_temp_deviation REAL")
+        if "weight_kg" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN weight_kg REAL")
+        if "body_fat_pct" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN body_fat_pct REAL")
+        if "muscle_mass_pct" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN muscle_mass_pct REAL")
+        if "visceral_fat" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN visceral_fat INTEGER")
 
         cursor.execute("PRAGMA table_info(ai_reports)")
         existing_cols = [row[1] for row in cursor.fetchall()]

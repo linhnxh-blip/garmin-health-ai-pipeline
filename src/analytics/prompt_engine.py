@@ -61,13 +61,14 @@ NGUYÊN TẮC THIẾT YẾU (BẮT BUỘC TUÂN THỦ 100%):
 5. ĐỘNG HỌC CHẠY BỘ HRM-PRO (GCT BALANCE & CADENCE): Trong Mục 3, nếu có bài chạy gần nhất, bắt buộc phân tích Cân bằng tiếp đất Chân Trái / Chân Phải (GCT Balance) và Nhịp chân (Cadence). Nếu GCT Balance có độ lệch > 1% (ví dụ: 51.2% L / 48.8% R), bắt buộc đưa ra cảnh báo nguy cơ lệch cơ chân hoặc quá tải khớp gối / gân Achilles.
 6. ĐẶT BÀI TẬP TRONG CHU KỲ TUẦN (MICROCYCLE): Phân tích bài tập hôm nay trong bối cảnh kế hoạch cả tuần. Ví dụ: Bài tập Thứ Bảy đóng vai trò chuẩn bị/tích lũy năng lượng cho bài chạy dài Long Run hoặc bài tập sức mạnh Gym vào ngày Chủ Nhật.
 7. CÁ NHÂN HÓA BÙ NƯỚC & KHOÁNG THEO TẢI THỰC TẾ: Ước tính lượng nước khoáng kiềm Fujiwa và điện giải dựa trên lượng calo tiêu hao thực tế, mồ hôi mất đi và thời tiết Hà Nội, không sử dụng con số cố định chung chung.
+8. TÍNH TOÁN MACRO THEO CÂN NẶNG THỰC TẾ (BODY COMPOSITION): Đọc chỉ số `weight_kg` thực tế từ dữ liệu (ví dụ: từ cân OMRON VIVA / Garmin). Tính toán chính xác nhu cầu Protein mục tiêu = (1.8 đến 2.0g) x weight_kg. Nếu có % Mỡ (body_fat_pct), % Cơ xương (muscle_mass_pct) hoặc Mỡ nội tạng (visceral_fat), hãy nhận xét thể trạng cơ thể trong Mục 1 hoặc Mục 4.
 
 BẮT BUỘC SỬ DỤNG CHÍNH XÁC CÁC THẺ TIÊU ĐỀ NÀY NÀY TRONG BÁO CÁO:
 
 # 🩺 Báo cáo Phân tích Sinh lý học & Phục hồi Toàn diện ({date})
 
 ### 🧠 1. Trạng thái Thần kinh Thực vật & Hô hấp Đêm:
-[Phân tích tương quan HRV Overnight vs Baseline 30 ngày (độ lệch %), RHR deviation. Đánh giá Nhịp thở khi ngủ (Respiration min/max/avg) & SpO2 (avg/min) để nhận diện dấu hiệu viêm nhiễm, ngạt thở khi ngủ hoặc stress tích lũy.]
+[Phân tích tương quan HRV Overnight vs Baseline 30 ngày (độ lệch %), RHR deviation. Đánh giá Nhịp thở khi ngủ (Respiration min/max/avg) & SpO2 (avg/min) để nhận diện dấu hiệu viêm nhiễm, ngạt thở khi ngủ hoặc stress tích lũy. Nhận xét Cân nặng & Thể trạng OMRON VIVA / Garmin nếu có (% Mỡ, % Cơ, Mỡ nội tạng).]
 
 ### 💤 2. Bóc tách Cấu trúc Giấc ngủ & Tái tạo Sinh học:
 [Đánh giá tỷ lệ Deep Sleep (mục tiêu >15-20% để hồi phục cơ bắp), REM Sleep, Awake duration. Hiệu suất nạp Body Battery (+ điểm sạc / giờ ngủ).]
@@ -76,7 +77,7 @@ BẮT BUỘC SỬ DỤNG CHÍNH XÁC CÁC THẺ TIÊU ĐỀ NÀY NÀY TRONG BÁO
 [Xác định trạng thái sẵn sàng (Training Readiness) và Trạng thái tập luyện (Training Status giải thích tiếng Việt). Nhận xét Động học chạy bộ HRM-Pro (Cadence & GCT Balance L/R nếu có bài chạy gần nhất). Chỉ định bài tập cụ thể cho Thứ trong tuần hiện tại kết hợp chu kỳ tuần Microcycle (chuẩn bị cho bài tập sức mạnh/chạy dài ngày mai): Cự ly, thời gian, ngưỡng nhịp tim tối đa theo MAF (180 - 44 = 136 bpm), hoặc chuyển sang Active Recovery / Bơi lội phục hồi / Giãn cơ.]
 
 ### 🍱 4. Kế hoạch Dinh dưỡng & Thực đơn Cá nhân hóa (Precision Nutrition):
-- **Mục tiêu Macro ngày hôm nay:** Ước tính nhu cầu Calo nạp vào dựa trên độ tiêu hao thực tế và mức phục hồi, phân bổ tỷ lệ Carb / Protein / Fat (tính bằng gram dựa trên trọng lượng cơ thể ~70kg).
+- **Mục tiêu Macro ngày hôm nay:** Ước tính nhu cầu Calo nạp vào dựa trên độ tiêu hao thực tế và mức phục hồi, phân bổ tỷ lệ Carb / Protein / Fat (tính bằng gram dựa trên trọng lượng cơ thể thực tế weight_kg: Protein = 1.8-2.0g x weight_kg).
 - **Thực đơn gợi ý từng bữa:**
   + Bữa sáng: Nhẹ bụng, tối ưu protein & vi chất (ví dụ: Sữa chua Hy Lạp Chobani, hoa quả, yến mạch).
   + Bữa trưa: Bữa giàu năng lượng phục hồi (cơm gạo lứt/trắng, thịt bò áp chảo/xào, rau xanh).
@@ -140,6 +141,13 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
 
     parts.append(f"- VO2 Max: {_format_value(tm.get('vo2_max'))}")
     parts.append(f"- Độ lệch nhiệt độ da (Skin Temp Deviation): {_format_value(tm.get('skin_temp_deviation'), '°C')}")
+
+    # Body Composition (OMRON VIVA / Garmin)
+    w_kg = tm.get("weight_kg")
+    fat_p = tm.get("body_fat_pct")
+    mus_p = tm.get("muscle_mass_pct")
+    vis_f = tm.get("visceral_fat")
+    parts.append(f"- Cân nặng & Thể trạng (Body Composition): Cân nặng = {_format_value(w_kg, 'kg')}, % Mỡ = {_format_value(fat_p, '%')}, % Cơ xương = {_format_value(mus_p, '%')}, Mỡ nội tạng = {_format_value(vis_f)}")
 
     # Active Calories & Steps
     bs_cal = bm.get("active_calories", {})
