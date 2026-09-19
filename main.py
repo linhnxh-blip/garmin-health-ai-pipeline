@@ -237,5 +237,21 @@ def import_apple_health(file_path, sync_garmin):
     except Exception as e:
         click.echo(f"❌ Apple Health import failed: {e}", err=True)
 
+@cli.command("sync-google-health")
+@click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
+def sync_google_health(target_date):
+    """Sync Weight & Body Fat metrics from Google Fitness REST API into SQLite DB."""
+    from src.ingestion.google_health_client import fetch_and_store_google_health_data
+    date_str = target_date or datetime.now().strftime("%Y-%m-%d")
+    click.echo(f"🔄 Syncing Google Health (Fit API) data for date: {date_str}...")
+    res = fetch_and_store_google_health_data(date_str, verbose=True)
+    if res is None:
+        click.echo("ℹ️ Google Health sync was skipped. (Make sure credentials.json exists and is configured).")
+    elif not res:
+        click.echo(f"ℹ️ No weight or body fat data points returned from Google Fit for {date_str}.")
+    else:
+        click.echo(f"🎉 Sync Complete! Weight: {res.get('weight_kg', 'N/A')} kg, Body Fat: {res.get('body_fat_pct', 'N/A')}%")
+
 if __name__ == "__main__":
     cli()
+

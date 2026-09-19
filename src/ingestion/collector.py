@@ -282,9 +282,18 @@ def fetch_and_store_daily_data(
         cursor.execute(UPSERT_DAILY_METRICS_SQL, daily_model.to_db_tuple())
         conn.commit()
 
+    # 11. Fetch & Sync Google Health Data (Weight / Body Fat)
+    try:
+        from src.ingestion.google_health_client import fetch_and_store_google_health_data
+        fetch_and_store_google_health_data(target_date, verbose=verbose)
+    except Exception as gh_err:
+        if verbose:
+            print(f"⚠️ Warning: Failed to sync Google Health data for {target_date}: {gh_err}")
+
     if verbose:
         print(f"✅ Successfully fetched and stored Garmin health data for {target_date}.")
     return daily_model
+
 
 def backfill_historical_data(
     days: int = 30,
