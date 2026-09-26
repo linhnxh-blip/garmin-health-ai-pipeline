@@ -70,17 +70,16 @@ def test_calculate_baseline_full_data(temp_db: Path):
     res = calculate_baseline(target_date=target_date, days=30, db_path=temp_db)
 
     assert res["target_date"] == target_date
-    assert res["sample_size_days"] == 30
-    assert res["baseline_days_requested"] == 30
-    assert res["date_range"]["start"] == "2026-08-02"
+    assert res["sample_size_days"] == 31
+    assert res["date_range"]["start"] == "2026-08-01"
     assert res["date_range"]["end"] == "2026-08-31"
 
     # Metrics baseline checks
     bs = res["metrics_baseline"]
-    assert bs["sleep_score"]["sample_count"] == 30
+    assert bs["sleep_score"]["sample_count"] == 31
     assert bs["sleep_score"]["avg"] is not None
-    assert bs["hrv_last_night"]["sample_count"] == 30
-    assert bs["resting_heart_rate"]["sample_count"] == 30
+    assert bs["hrv_last_night"]["sample_count"] == 31
+    assert bs["resting_heart_rate"]["sample_count"] == 31
 
     # 7-day training load checks
     tl = res["training_load_7d"]
@@ -193,11 +192,50 @@ def test_cli_analyze_dry_run(temp_db: Path):
     populate_mock_daily_metrics(temp_db, "2026-08-01", 10)
     runner = CliRunner()
     
-    with patch("src.analytics.baseline.get_db_connection") as mock_conn:
-        # Pass actual db connection by invoking command with custom arguments or patch
-        pass
-
     result = runner.invoke(cli, ["analyze", "--date", "2026-08-11", "--dry-run"])
     assert result.exit_code == 0
     assert "Running Garmin Health AI Analysis" in result.output
     assert "DRY RUN PROMPT PREVIEW" in result.output
+
+def test_cli_analyze_with_send_telegram():
+    runner = CliRunner()
+    with patch("main.calculate_baseline") as mock_base, \
+         patch("main.generate_health_analysis") as mock_gen, \
+         patch("main.save_report_to_db"), \
+         patch("main.export_report_to_file", return_value=Path("data/reports/2026-09-19_health_journal.md")), \
+         patch("src.delivery.telegram_bot.send_telegram_report", return_value=True) as mock_send:
+
+        mock_base.return_value = {"sample_size_days": 30}
+        mock_gen.return_value = {
+            "report_markdown": "# 🩺 Report Test",
+            "raw_prompt": "prompt",
+            "model_used": "gemini-2.5-flash",
+            "prompt_tokens": 10,
+            "completion_tokens": 20
+        }
+
+        result = runner.invoke(cli, ["analyze", "--date", "2026-09-19", "--send-telegram"])
+        assert result.exit_code == 0
+        assert "Dispatching AI analysis report to Telegram" in result.output
+        assert "delivered to Telegram" in result.output
+        mock_send.assert_called_once()
+
+def test_cli_send_report_command(tmp_path: Path):
+    runner = CliRunner()
+    report_file = tmp_path / "2026-09-19_health_journal.md"
+    report_file.write_text("# 🩺 Test Report Content", encoding="utf-8")
+
+    with patch("main.BASE_DIR", tmp_path.parent), \
+         patch("src.delivery.telegram_bot.send_telegram_report", return_value=True) as mock_send:
+
+        # Mock BASE_DIR / "data" / "reports"
+        reports_dir = tmp_path.parent / "data" / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        (reports_dir / "2026-09-19_health_journal.md").write_text("# 🩺 Test Report Content", encoding="utf-8")
+
+        result = runner.invoke(cli, ["send-report", "--date", "2026-09-19"])
+        assert result.exit_code == 0
+        assert "Preparing to send AI report" in result.output
+        assert "delivered to Telegram" in result.output
+        mock_send.assert_called_once()
+

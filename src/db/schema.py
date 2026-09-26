@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     body_battery_lowest INTEGER,
     active_calories INTEGER,
     total_steps INTEGER,
+    step_goal INTEGER,
     vo2_max REAL,
     respiration_min REAL,
     respiration_max REAL,
@@ -46,6 +47,8 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     muscle_mass_pct REAL,
     visceral_fat INTEGER,
     activities_summary TEXT,
+    nap_duration_seconds INTEGER,
+    nap_body_battery_recharge INTEGER,
     raw_sync_timestamp DATETIME,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -109,6 +112,7 @@ INSERT INTO daily_metrics (
     body_battery_lowest,
     active_calories,
     total_steps,
+    step_goal,
     vo2_max,
     respiration_min,
     respiration_max,
@@ -127,7 +131,7 @@ INSERT INTO daily_metrics (
     activities_summary,
     raw_sync_timestamp,
     updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(date) DO UPDATE SET
     sleep_score = COALESCE(excluded.sleep_score, daily_metrics.sleep_score),
     sleep_duration_seconds = COALESCE(excluded.sleep_duration_seconds, daily_metrics.sleep_duration_seconds),
@@ -147,6 +151,7 @@ ON CONFLICT(date) DO UPDATE SET
     body_battery_lowest = COALESCE(excluded.body_battery_lowest, daily_metrics.body_battery_lowest),
     active_calories = COALESCE(excluded.active_calories, daily_metrics.active_calories),
     total_steps = COALESCE(excluded.total_steps, daily_metrics.total_steps),
+    step_goal = COALESCE(excluded.step_goal, daily_metrics.step_goal),
     vo2_max = COALESCE(excluded.vo2_max, daily_metrics.vo2_max),
     respiration_min = COALESCE(excluded.respiration_min, daily_metrics.respiration_min),
     respiration_max = COALESCE(excluded.respiration_max, daily_metrics.respiration_max),
@@ -166,3 +171,45 @@ ON CONFLICT(date) DO UPDATE SET
     raw_sync_timestamp = COALESCE(excluded.raw_sync_timestamp, daily_metrics.raw_sync_timestamp),
     updated_at = CURRENT_TIMESTAMP;
 """
+
+CREATE_NUTRITION_LOGS_TABLE = """
+CREATE TABLE IF NOT EXISTS nutrition_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    meal_type TEXT,
+    dishes TEXT,
+    total_calories INTEGER,
+    protein_g REAL,
+    carb_g REAL,
+    fat_g REAL,
+    alcohol_units REAL,
+    alcohol_description TEXT,
+    sleep_risk_assessment TEXT,
+    short_summary TEXT,
+    image_path TEXT,
+    raw_ai_response TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+INSERT_NUTRITION_LOG_SQL = """
+INSERT INTO nutrition_logs (
+    date,
+    timestamp,
+    meal_type,
+    dishes,
+    total_calories,
+    protein_g,
+    carb_g,
+    fat_g,
+    alcohol_units,
+    alcohol_description,
+    sleep_risk_assessment,
+    short_summary,
+    image_path,
+    raw_ai_response,
+    created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+"""
+

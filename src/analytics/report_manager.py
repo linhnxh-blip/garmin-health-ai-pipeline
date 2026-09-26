@@ -45,11 +45,14 @@ def export_report_to_file(
     target_dir = output_dir or (BASE_DIR / "data" / "reports")
     target_dir.mkdir(parents=True, exist_ok=True)
     
+    cleaned_md = report_markdown.replace("===SECTION_BREAK===", "\n---\n")
+
     file_path = target_dir / f"{date}_health_journal.md"
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(report_markdown)
+        f.write(cleaned_md)
 
     return file_path
+
 
 def get_report_from_db(
     date: str,

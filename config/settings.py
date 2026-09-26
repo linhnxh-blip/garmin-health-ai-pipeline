@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.6-flash"
+    gemini_vision_model: str = "gemini-3.6-flash"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
@@ -50,6 +51,10 @@ class Settings(BaseSettings):
     google_keep_app_password: str = ""
     google_keep_master_token: str = ""
 
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+    report_schedule_time: str = "04:45"
     nightly_run_time: str = "23:00"
 
     @property

@@ -79,3 +79,29 @@ def test_fetch_and_store_daily_data(mock_garmin_api, temp_db):
         cursor.execute("SELECT COUNT(*) FROM raw_garmin_data WHERE date = '2024-09-18'")
         raw_count = cursor.fetchone()[0]
         assert raw_count == 5
+
+def test_activities_extraction(mock_garmin_api, temp_db):
+    mock_garmin_api.get_activities_by_date.return_value = [
+        {
+            "activityName": "Morning Interval Run",
+            "activityType": {"typeKey": "running"},
+            "duration": 2400.0,
+            "distance": 8000.0,
+            "calories": 550,
+            "averageHR": 158,
+            "maxHR": 175,
+            "aerobicTrainingEffect": 3.8,
+            "anaerobicTrainingEffect": 2.1,
+            "activityTrainingLoad": 125.5
+        }
+    ]
+    result = fetch_and_store_daily_data("2024-09-18", client=mock_garmin_api, db_path=temp_db)
+    import json
+    acts = json.loads(result.activities_summary)
+    assert len(acts) == 1
+    assert acts[0]["name"] == "Morning Interval Run"
+    assert acts[0]["aerobic_training_effect"] == 3.8
+    assert acts[0]["anaerobic_training_effect"] == 2.1
+    assert acts[0]["activity_training_load"] == 125.5
+
+

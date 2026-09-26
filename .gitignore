@@ -3,20 +3,32 @@
 .env.txt
 .env.local
 !.env.example
-data/*.txt
+credentials.json
+*token*
+data/.telegraph_token
 data/garmin_cookies.txt
+data/*.txt
 
-# Database files
+# Database files & PID locks
 *.db
 *.sqlite
 *.sqlite3
 data/*.db
 data/*.sqlite
+data/*.sqlite3
+.bot.lock
+*.lock
 
-# Garmin zip export and raw data
+# Garmin zip export, raw FIT data & meal images
+*.zip
+*.fit
 data/*.zip
+data/*.fit
+data/garmin_raw/
 data/raw/
 data/extracted/
+data/nutrition_images/
+data/reports/*.md
 
 # Python cache & virtual environment
 __pycache__/

@@ -6,7 +6,8 @@ from config.settings import settings
 from .schema import (
     CREATE_RAW_GARMIN_DATA_TABLE,
     CREATE_DAILY_METRICS_TABLE,
-    CREATE_AI_REPORTS_TABLE
+    CREATE_AI_REPORTS_TABLE,
+    CREATE_NUTRITION_LOGS_TABLE
 )
 
 @contextmanager
@@ -28,6 +29,7 @@ def init_db(db_path: Optional[Path] = None) -> Path:
         cursor.execute(CREATE_RAW_GARMIN_DATA_TABLE)
         cursor.execute(CREATE_DAILY_METRICS_TABLE)
         cursor.execute(CREATE_AI_REPORTS_TABLE)
+        cursor.execute(CREATE_NUTRITION_LOGS_TABLE)
 
         # Auto-migrate columns if table existed with older schema
         cursor.execute("PRAGMA table_info(daily_metrics)")
@@ -62,6 +64,12 @@ def init_db(db_path: Optional[Path] = None) -> Path:
             cursor.execute("ALTER TABLE daily_metrics ADD COLUMN muscle_mass_pct REAL")
         if "visceral_fat" not in dm_cols:
             cursor.execute("ALTER TABLE daily_metrics ADD COLUMN visceral_fat INTEGER")
+        if "nap_duration_seconds" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN nap_duration_seconds INTEGER")
+        if "nap_body_battery_recharge" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN nap_body_battery_recharge INTEGER")
+        if "step_goal" not in dm_cols:
+            cursor.execute("ALTER TABLE daily_metrics ADD COLUMN step_goal INTEGER")
 
         cursor.execute("PRAGMA table_info(ai_reports)")
         existing_cols = [row[1] for row in cursor.fetchall()]

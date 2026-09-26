@@ -12,7 +12,12 @@ TARGET_METRICS_KEYS = [
     "resting_heart_rate",
     "avg_stress_level",
     "active_calories",
-    "total_steps"
+    "total_steps",
+    "sleep_duration_seconds",
+    "deep_sleep_seconds",
+    "rem_sleep_seconds",
+    "light_sleep_seconds",
+    "awake_duration_seconds"
 ]
 
 def _calc_stats(values: List[float]) -> Dict[str, Any]:
@@ -38,6 +43,44 @@ def _calc_stats(values: List[float]) -> Dict[str, Any]:
         "max": max(valid_vals),
         "sample_count": n
     }
+
+def get_180d_sleep_baseline(target_date: str, db_path: Optional[Path] = None) -> Dict[str, Optional[float]]:
+    """Query 180-day averages for sleep stages (deep_sleep_seconds, rem_sleep_seconds, light_sleep_seconds, awake_duration_seconds) directly via SQL from daily_metrics."""
+    target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+    start_dt = target_dt - timedelta(days=180)
+    start_date_str = start_dt.strftime("%Y-%m-%d")
+
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT 
+                AVG(sleep_duration_seconds) as avg_sleep_dur,
+                AVG(deep_sleep_seconds) as avg_deep,
+                AVG(rem_sleep_seconds) as avg_rem,
+                AVG(light_sleep_seconds) as avg_light,
+                AVG(awake_duration_seconds) as avg_awake
+            FROM daily_metrics
+            WHERE date < ? AND date >= ?
+            """,
+            (target_date, start_date_str)
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "sleep_duration_seconds": round(row[0], 2) if row[0] is not None else None,
+                "deep_sleep_seconds": round(row[1], 2) if row[1] is not None else None,
+                "rem_sleep_seconds": round(row[2], 2) if row[2] is not None else None,
+                "light_sleep_seconds": round(row[3], 2) if row[3] is not None else None,
+                "awake_duration_seconds": round(row[4], 2) if row[4] is not None else None
+            }
+        return {
+            "sleep_duration_seconds": None,
+            "deep_sleep_seconds": None,
+            "rem_sleep_seconds": None,
+            "light_sleep_seconds": None,
+            "awake_duration_seconds": None
+        }
 
 def calculate_baseline(
     target_date: str,
@@ -83,18 +126,31 @@ def calculate_baseline(
                 target_metrics[k] = None
             target_metrics["date"] = target_date
 
-        # 2. Fetch Baseline Rows (strictly prior to target_date up to N days)
+        # 2. Fetch Baseline Rows (strictly prior to target_date on all available history)
         cursor.execute(
             """
             SELECT * FROM daily_metrics 
-            WHERE date < ? AND date >= ? 
+            WHERE date < ? 
             ORDER BY date ASC
             """,
-            (target_date, start_date_str)
+            (target_date,)
         )
         baseline_rows = [dict(row) for row in cursor.fetchall()]
 
-        # 3. Fetch 7-day rows for training load
+        # 3. Fetch 180-day rolling baseline rows for current physiological state
+        rolling_180d_dt = target_dt - timedelta(days=180)
+        rolling_180d_str = rolling_180d_dt.strftime("%Y-%m-%d")
+        cursor.execute(
+            """
+            SELECT * FROM daily_metrics 
+            WHERE date < ? AND date >= ?
+            ORDER BY date ASC
+            """,
+            (target_date, rolling_180d_str)
+        )
+        rolling_180d_rows = [dict(row) for row in cursor.fetchall()]
+
+        # 4. Fetch 7-day rows for training load
         cursor.execute(
             """
             SELECT * FROM daily_metrics
@@ -111,7 +167,7 @@ def calculate_baseline(
         "end": baseline_rows[-1]["date"] if baseline_rows else None
     }
 
-    # Aggregate metric series
+    # Aggregate metric series for All-Time Baseline
     metric_series: Dict[str, List[float]] = {key: [] for key in TARGET_METRICS_KEYS}
     for row in baseline_rows:
         for key in TARGET_METRICS_KEYS:
@@ -121,6 +177,19 @@ def calculate_baseline(
 
     metrics_baseline = {
         key: _calc_stats(metric_series[key])
+        for key in TARGET_METRICS_KEYS
+    }
+
+    # Aggregate metric series for 180-Day Rolling Baseline
+    metric_series_180d: Dict[str, List[float]] = {key: [] for key in TARGET_METRICS_KEYS}
+    for row in rolling_180d_rows:
+        for key in TARGET_METRICS_KEYS:
+            val = row.get(key)
+            if val is not None:
+                metric_series_180d[key].append(float(val))
+
+    metrics_baseline_180d = {
+        key: _calc_stats(metric_series_180d[key])
         for key in TARGET_METRICS_KEYS
     }
 
@@ -161,12 +230,18 @@ def calculate_baseline(
         "activities": activities_7d
     }
 
+    from src.analytics.memory_engine import build_memory_context
+    adaptive_memory = build_memory_context(target_date, days=60, db_path=db_path)
+
     return {
         "target_date": target_date,
         "target_metrics": target_metrics,
         "sample_size_days": sample_size_days,
+        "sample_size_180d": len(rolling_180d_rows),
         "baseline_days_requested": days,
         "date_range": date_range,
         "metrics_baseline": metrics_baseline,
-        "training_load_7d": training_load_7d
+        "metrics_baseline_180d": metrics_baseline_180d,
+        "training_load_7d": training_load_7d,
+        "adaptive_memory": adaptive_memory
     }

@@ -56,6 +56,15 @@ def fetch_and_store_daily_data(
             metrics["rem_sleep_seconds"] = daily_dto.get("remSleepSeconds") or daily_dto.get("remSleepDataSeconds")
             metrics["light_sleep_seconds"] = daily_dto.get("lightSleepSeconds")
             metrics["awake_duration_seconds"] = daily_dto.get("awakeSleepSeconds")
+
+            nap_sec = daily_dto.get("napTimeSeconds")
+            if nap_sec is None:
+                daily_naps = daily_dto.get("dailyNapDTOS") or []
+                if isinstance(daily_naps, list) and daily_naps:
+                    nap_sec = sum(int(n.get("napTimeSec") or 0) for n in daily_naps if isinstance(n, dict))
+            if nap_sec is not None and int(nap_sec) > 0:
+                metrics["nap_duration_seconds"] = int(nap_sec)
+                metrics["nap_body_battery_recharge"] = int(round((float(nap_sec) / 900.0) * 3.6))
     except Exception as e:
         if verbose:
             print(f"⚠️ Warning: Failed to fetch sleep data for {target_date}: {e}")
@@ -93,6 +102,16 @@ def fetch_and_store_daily_data(
                 metrics["body_battery_lowest"] = int(user_summary["bodyBatteryLowestValue"])
             if user_summary.get("totalSteps") is not None:
                 metrics["total_steps"] = int(user_summary["totalSteps"])
+            
+            step_goal_val = (
+                user_summary.get("userStepGoal")
+                or user_summary.get("stepGoal")
+                or user_summary.get("userDailyStepGoal")
+                or user_summary.get("dailyStepGoal")
+            )
+            if step_goal_val is not None:
+                metrics["step_goal"] = int(step_goal_val)
+
             if user_summary.get("activeKilocalories") is not None:
                 metrics["active_calories"] = int(user_summary["activeKilocalories"])
             if user_summary.get("vo2Max") is not None:
@@ -149,18 +168,24 @@ def fetch_and_store_daily_data(
             act_summary_list = []
             for act in activities:
                 if isinstance(act, dict):
+                    act_type_obj = act.get("activityType")
+                    type_key = act_type_obj.get("typeKey") if isinstance(act_type_obj, dict) else (act_type_obj if isinstance(act_type_obj, str) else "unknown")
                     act_summary_list.append({
-                        "name": act.get("activityName") or act.get("activityType", {}).get("typeKey"),
-                        "type": act.get("activityType", {}).get("typeKey"),
+                        "name": act.get("activityName") or type_key,
+                        "type": type_key,
                         "duration_seconds": act.get("duration"),
                         "distance_meters": act.get("distance"),
-                        "calories": act.get("calories"),
-                        "avg_hr": act.get("averageHR"),
-                        "max_hr": act.get("maxHR"),
+                        "calories": act.get("calories") or act.get("activeKilocalories"),
+                        "avg_hr": act.get("averageHR") or act.get("avgHR"),
+                        "max_hr": act.get("maxHR") or act.get("maxHeartRate"),
                         "avg_cadence": act.get("averageRunningCadenceInStepsPerMinute") or act.get("averageCadence"),
                         "gct_balance": act.get("avgGroundContactBalance") or act.get("groundContactBalance") or act.get("avgGroundContactTimeBalance"),
-                        "stride_length_cm": act.get("averageStrideLength"),
-                        "aerobic_training_effect": act.get("aerobicTrainingEffect")
+                        "stride_length_cm": act.get("avgStrideLength") or act.get("averageStrideLength") or act.get("strideLength"),
+                        "vertical_oscillation_cm": act.get("avgVerticalOscillation") or act.get("verticalOscillation"),
+                        "vertical_ratio_pct": act.get("avgVerticalRatio") or act.get("verticalRatio"),
+                        "aerobic_training_effect": act.get("aerobicTrainingEffect") or act.get("aerobicTE"),
+                        "anaerobic_training_effect": act.get("anaerobicTrainingEffect") or act.get("anaerobicTE"),
+                        "activity_training_load": act.get("activityTrainingLoad") or act.get("trainingLoad")
                     })
             if act_summary_list:
                 metrics["activities_summary"] = json.dumps(act_summary_list)
@@ -255,13 +280,29 @@ def fetch_and_store_daily_data(
                 w_item = weight_list[-1]
                 if isinstance(w_item, dict):
                     w_val = w_item.get("weight")
+                    w_kg = None
                     if w_val is not None:
                         w_kg = float(w_val) / 1000.0 if float(w_val) > 200 else float(w_val)
                         metrics["weight_kg"] = round(w_kg, 2)
                     if w_item.get("bodyFat") is not None or w_item.get("bodyFatPercentage") is not None:
                         metrics["body_fat_pct"] = float(w_item.get("bodyFat") or w_item.get("bodyFatPercentage"))
-                    if w_item.get("muscleMass") is not None or w_item.get("muscleMassPercentage") is not None:
-                        metrics["muscle_mass_pct"] = float(w_item.get("muscleMass") or w_item.get("muscleMassPercentage"))
+                    
+                    # Fix muscle mass unit conversion (grams vs percentage)
+                    raw_muscle = w_item.get("muscleMass") or w_item.get("muscleMassPercentage")
+                    if raw_muscle is not None:
+                        m_val = float(raw_muscle)
+                        if m_val > 100:  # Value is in grams (e.g. 23433.0 grams or 36500.0 grams)
+                            weight_for_calc = metrics.get("weight_kg") or w_kg
+                            calc_pct = round((m_val / (weight_for_calc * 1000.0)) * 100.0, 1) if (weight_for_calc and weight_for_calc > 0) else 0
+                            # If calc_pct > 50.0%, it means m_val/1000 was actually the raw percentage (e.g. 36500.0 grams -> 36.5%)
+                            if calc_pct > 50.0:
+                                metrics["muscle_mass_pct"] = round(m_val / 1000.0, 1)
+                            else:
+                                metrics["muscle_mass_pct"] = calc_pct
+                        else:
+                            metrics["muscle_mass_pct"] = round(m_val, 1)
+
+
                     if w_item.get("visceralFat") is not None:
                         metrics["visceral_fat"] = int(w_item["visceralFat"])
     except Exception as e:

@@ -25,6 +25,7 @@ class DailyMetrics(BaseModel):
     body_battery_lowest: Optional[int] = Field(default=None, description="Body battery lowest value")
     active_calories: Optional[int] = Field(default=None, description="Active calories in kcal")
     total_steps: Optional[int] = Field(default=None, description="Total step count")
+    step_goal: Optional[int] = Field(default=None, description="Daily step goal")
     vo2_max: Optional[float] = Field(default=None, description="VO2 Max value")
     respiration_min: Optional[float] = Field(default=None, description="Minimum overnight respiration rate (brpm)")
     respiration_max: Optional[float] = Field(default=None, description="Maximum overnight respiration rate (brpm)")
@@ -65,6 +66,7 @@ class DailyMetrics(BaseModel):
             self.body_battery_lowest,
             self.active_calories,
             self.total_steps,
+            self.step_goal,
             self.vo2_max,
             self.respiration_min,
             self.respiration_max,
