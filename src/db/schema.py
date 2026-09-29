@@ -213,3 +213,72 @@ INSERT INTO nutrition_logs (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
 """
 
+CREATE_BLOOD_TESTS_TABLE = """
+CREATE TABLE IF NOT EXISTS blood_tests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_date TEXT NOT NULL,
+    facility TEXT NOT NULL,
+    category TEXT,
+    marker_name TEXT NOT NULL,
+    raw_name TEXT,
+    value REAL,
+    value_text TEXT,
+    unit TEXT,
+    ref_min REAL,
+    ref_max REAL,
+    status TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(test_date, marker_name)
+);
+"""
+
+UPSERT_BLOOD_TESTS_SQL = """
+INSERT INTO blood_tests (
+    test_date,
+    facility,
+    category,
+    marker_name,
+    raw_name,
+    value,
+    value_text,
+    unit,
+    ref_min,
+    ref_max,
+    status,
+    created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(test_date, marker_name) DO UPDATE SET
+    facility = excluded.facility,
+    category = excluded.category,
+    raw_name = excluded.raw_name,
+    value = excluded.value,
+    value_text = excluded.value_text,
+    unit = excluded.unit,
+    status = excluded.status,
+    created_at = CURRENT_TIMESTAMP;
+"""
+
+CREATE_DAILY_REPORTS_TABLE = """
+CREATE TABLE IF NOT EXISTS daily_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    report_type TEXT NOT NULL DEFAULT 'morning',
+    content TEXT NOT NULL,
+    metrics_snapshot TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(date, report_type) ON CONFLICT REPLACE
+);
+"""
+
+CREATE_INDEXES_SQL = [
+    "CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics(date);",
+    "CREATE INDEX IF NOT EXISTS idx_blood_tests_date_marker ON blood_tests(test_date, marker_name);",
+    "CREATE INDEX IF NOT EXISTS idx_nutrition_logs_date ON nutrition_logs(date);",
+    "CREATE INDEX IF NOT EXISTS idx_ai_reports_date ON ai_reports(date);",
+    "CREATE INDEX IF NOT EXISTS idx_daily_reports_date_type ON daily_reports(date, report_type);",
+    "CREATE INDEX IF NOT EXISTS idx_raw_garmin_date_type ON raw_garmin_data(date, data_type);"
+]
+
+
+
+

@@ -188,10 +188,12 @@ def test_report_manager_save_and_export(temp_db: Path, tmp_path: Path):
     content = file_p.read_text(encoding="utf-8")
     assert content == report_markdown
 
-def test_cli_analyze_dry_run(temp_db: Path):
+def test_cli_analyze_dry_run(temp_db: Path, monkeypatch):
+    from config.settings import settings
     populate_mock_daily_metrics(temp_db, "2026-08-01", 10)
     runner = CliRunner()
     
+    monkeypatch.setattr(settings, "db_path", str(temp_db))
     result = runner.invoke(cli, ["analyze", "--date", "2026-08-11", "--dry-run"])
     assert result.exit_code == 0
     assert "Running Garmin Health AI Analysis" in result.output
@@ -199,26 +201,21 @@ def test_cli_analyze_dry_run(temp_db: Path):
 
 def test_cli_analyze_with_send_telegram():
     runner = CliRunner()
-    with patch("main.calculate_baseline") as mock_base, \
-         patch("main.generate_health_analysis") as mock_gen, \
-         patch("main.save_report_to_db"), \
-         patch("main.export_report_to_file", return_value=Path("data/reports/2026-09-19_health_journal.md")), \
-         patch("src.delivery.telegram_bot.send_telegram_report", return_value=True) as mock_send:
-
-        mock_base.return_value = {"sample_size_days": 30}
-        mock_gen.return_value = {
+    with patch("src.analytics.pipeline.run_health_pipeline") as mock_pipeline:
+        mock_pipeline.return_value = {
             "report_markdown": "# 🩺 Report Test",
             "raw_prompt": "prompt",
             "model_used": "gemini-2.5-flash",
             "prompt_tokens": 10,
-            "completion_tokens": 20
+            "completion_tokens": 20,
+            "exported_path": "data/reports/2026-09-19_health_journal.md",
+            "sent_telegram": True
         }
 
         result = runner.invoke(cli, ["analyze", "--date", "2026-09-19", "--send-telegram"])
         assert result.exit_code == 0
-        assert "Dispatching AI analysis report to Telegram" in result.output
-        assert "delivered to Telegram" in result.output
-        mock_send.assert_called_once()
+        assert "Running Garmin Health AI Analysis" in result.output
+        mock_pipeline.assert_called_once()
 
 def test_cli_send_report_command(tmp_path: Path):
     runner = CliRunner()

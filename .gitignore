@@ -13,11 +13,18 @@ data/*.txt
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
+*.pid
 data/*.db
 data/*.sqlite
 data/*.sqlite3
 .bot.lock
 *.lock
+
+# Temporary scratch directory
+scratch/
+
 
 # Garmin zip export, raw FIT data & meal images
 *.zip
@@ -51,7 +58,15 @@ data/.garmin_tokens/
 *.swp
 *.swo
 
-# Test & Coverage logs
+# Medical Records Incoming Directory
+data/medical_records/incoming/*
+!data/medical_records/incoming/.gitkeep
+
+# Test & Coverage logs & Server logs
 .pytest_cache/
 .coverage
 htmlcov/
+logs/
+*.log
+
+

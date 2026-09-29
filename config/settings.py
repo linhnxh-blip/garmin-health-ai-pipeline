@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    web_host: str = Field(default="127.0.0.1")
+    web_port: int = Field(default=8000)
+    base_web_url: str = Field(default="http://localhost:8000")
+
     report_schedule_time: str = "04:45"
     nightly_run_time: str = "23:00"
 

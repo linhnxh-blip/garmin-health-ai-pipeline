@@ -31,7 +31,12 @@ Nhiệm vụ của bạn là nhận diện và phân tích toàn diện ảnh ch
    - NẾU BỮA ĂN DIỄN RA SAU 18:00 (TỐI / ĐỒ NHẬU):
      + MỚI ĐÁNH GIÁ thời gian tiêu hóa (cần kết thúc trước 18:45 hoặc ít nhất 2.5 - 3 tiếng trước giờ ngủ 21:30) và tác động tới nhịp tim nghỉ RHR đêm / chất lượng giấc ngủ.
 
-4. YÊU CẦU ĐẦU RA (BẮT BUỘC TRẢ VỀ DUY NHẤT 1 OBJECT JSON CHUẨN SANITIZED, KHÔNG CHỨA KHỐI MÃ MARKDOWN):
+4. ĐÁNH GIÁ TÍNH TÍCH LŨY TRONG NGÀY (CUMULATIVE CONTEXT AWARENESS):
+   - Khi có thông tin nhật ký dinh dưỡng đã nạp trong ngày, hãy liên kết món mới với các món VĐV đã ăn trước đó.
+   - NẾU VĐV đã nạp đủ Protein trước đó (ví dụ trứng, thịt bò, ức gà trong vòng 1-2 tiếng trước) và hiện tại đang nạp tinh bột (khoai lang, yến mạch, cơm), BẮT BUỘC ghi nhận: "Món này kết hợp hoàn hảo với lượng protein từ [món đạm đã ăn trước đó], giúp hoàn thiện cân bằng Macro cho bữa ăn."
+   - TUYỆT ĐỐI KHÔNG đưa ra lời nhắc nhở mù quáng yêu cầu nạp thêm đạm/trứng nếu VĐV đã nạp đạm/trứng trong cùng buổi sáng/ngày đó.
+
+5. YÊU CẦU ĐẦU RA (BẮT BUỘC TRẢ VỀ DUY NHẤT 1 OBJECT JSON CHUẨN SANITIZED, KHÔNG CHỨA KHỐI MÃ MARKDOWN):
 {
   "meal_type": "Bữa chính / Thức uống / Bữa phụ / Đồ nhậu",
   "dishes": ["Nước ép cần tây dứa", "1 quả chuối"],
@@ -82,6 +87,37 @@ def analyze_meal_image_openai(img_bytes: bytes, user_text: str) -> Optional[str]
         print(f"⚠️ OpenAI Vision fallback exception: {err}")
     return None
 
+def _get_intraday_cumulative_context(date_str: str) -> str:
+    """Fetch previously logged meals today to build intraday cumulative awareness for meal review prompts."""
+    try:
+        from src.db.nutrition_repository import get_nutrition_logs_by_date, get_today_nutrition_summary
+        logs = get_nutrition_logs_by_date(date_str)
+        if not logs:
+            return "\n📌 NHẬT KÝ DINH DƯỠNG TRONG NGÀY: Chưa có món ăn nào được ghi nhận trước đó hôm nay."
+        
+        prev_items = []
+        for l in logs:
+            d_list = l.get("dishes") or []
+            d_str = ", ".join(d_list) if isinstance(d_list, list) else str(d_list)
+            ts = str(l.get("timestamp") or "")
+            t_part = ts.split()[-1] if len(ts.split()) > 1 else ts
+            p_val = l.get("protein_g") or 0.0
+            c_val = l.get("carb_g") or 0.0
+            prev_items.append(f"• {d_str} (lúc {t_part} - {p_val}g Protein, {c_val}g Carb)")
+
+        summary = get_today_nutrition_summary(date_str)
+        return (
+            f"\n📌 NHẬT KÝ DINH DƯỠNG ĐÃ NẠP TRONG NGÀY HÔM NAY:\n"
+            f"Các món đã ăn trước đó:\n" + "\n".join(prev_items) + "\n"
+            f"Tổng lũy kế đã nạp hôm nay: {summary['total_cal']} kcal | Protein: {summary['total_protein']}g | Carb: {summary['total_carbs']}g | Fat: {summary['total_fat']}g.\n"
+            f"⚠️ QUY TẮC ĐÁNH GIÁ TÍCH LŨY (CUMULATIVE CONTEXT AWARENESS):\n"
+            f"- Liên kết món mới này với các món VĐV đã ăn trước đó trong ngày.\n"
+            f"- NẾU VĐV đã ăn nguồn đạm/protein (trứng, thịt, cá, sữa chua) trước đó và hiện tại đang nạp tinh bột (khoai lang, cơm, yến mạch), BẮT BUỘC ghi nhận sự kết hợp hoàn hảo giữa món tinh bột này và lượng protein đã nạp trước đó. TUYỆT ĐỐI KHÔNG nhắc nhở mù quáng ép VĐV ăn thêm trứng/đạm mà họ vừa mới ăn xong!"
+        )
+    except Exception:
+        return ""
+
+
 def analyze_meal_image(
     image_input: Union[bytes, str, Path, Image.Image],
     caption: Optional[str] = None,
@@ -114,6 +150,7 @@ def analyze_meal_image(
     user_text = f"Thời điểm gửi ảnh/bữa ăn: {ts_str} (Giờ thực tế: {now_dt.strftime('%H:%M')})."
     if caption:
         user_text += f"\nChú thích của vận động viên: '{caption}'."
+    user_text += _get_intraday_cumulative_context(date_str)
 
     # Ensure image is encoded to JPEG bytes with explicit mime_type
     img_byte_arr = io.BytesIO()
@@ -284,6 +321,7 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
             f"Thời điểm ghi nhận: {ts_str}.\n"
             f"Mô tả món ăn/bữa ăn của vận động viên: '{description_text}'.\n"
             f"Hãy phân tích và ước lượng hàm lượng dinh dưỡng Macros, calo, cồn và đánh giá giấc ngủ."
+            + _get_intraday_cumulative_context(date_str)
         )
 
         env_model = (getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash").strip()

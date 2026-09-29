@@ -179,3 +179,30 @@ def delete_duplicate_nutrition_logs(db_path: Optional[Path] = None) -> int:
 
         return deleted_count
 
+
+def get_remaining_nutrition_quota(
+    date_str: Optional[str] = None,
+    weight_kg: float = 65.6,
+    day_type: str = "rest",
+    db_path: Optional[Path] = None
+) -> Dict[str, Any]:
+    """Calculate remaining calorie and macro quotas for today using dynamic target source of truth from nutrition_calculator.
+    Formula: remaining = target - sum(intraday_logged_macros).
+    """
+    from src.services.nutrition_calculator import calculate_daily_macro_targets
+    summary = get_today_nutrition_summary(date_str, db_path=db_path)
+    targets = calculate_daily_macro_targets(weight_kg=weight_kg, day_type=day_type, uric_acid_umol_l=442.0)
+
+    rem_cal = max(0, int(targets["target_calories"] - summary["total_cal"]))
+    rem_p = round(max(0.0, targets["protein_g"] - summary["total_protein"]), 1)
+    rem_c = round(max(0.0, targets["carb_g"] - summary["total_carbs"]), 1)
+    rem_f = round(max(0.0, targets["fat_g"] - summary["total_fat"]), 1)
+
+    return {
+        "target": targets,
+        "logged": summary,
+        "remaining_cal": rem_cal,
+        "remaining_protein": rem_p,
+        "remaining_carbs": rem_c,
+        "remaining_fat": rem_f
+    }

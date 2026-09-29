@@ -7,15 +7,20 @@ from .schema import (
     CREATE_RAW_GARMIN_DATA_TABLE,
     CREATE_DAILY_METRICS_TABLE,
     CREATE_AI_REPORTS_TABLE,
-    CREATE_NUTRITION_LOGS_TABLE
+    CREATE_DAILY_REPORTS_TABLE,
+    CREATE_NUTRITION_LOGS_TABLE,
+    CREATE_BLOOD_TESTS_TABLE,
+    CREATE_INDEXES_SQL
 )
 
 @contextmanager
 def get_db_connection(db_path: Optional[Path] = None) -> Generator[sqlite3.Connection, None, None]:
     target_path = db_path or settings.absolute_db_path
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(target_path))
+    conn = sqlite3.connect(str(target_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
     try:
         yield conn
     finally:
@@ -29,7 +34,13 @@ def init_db(db_path: Optional[Path] = None) -> Path:
         cursor.execute(CREATE_RAW_GARMIN_DATA_TABLE)
         cursor.execute(CREATE_DAILY_METRICS_TABLE)
         cursor.execute(CREATE_AI_REPORTS_TABLE)
+        cursor.execute(CREATE_DAILY_REPORTS_TABLE)
         cursor.execute(CREATE_NUTRITION_LOGS_TABLE)
+        cursor.execute(CREATE_BLOOD_TESTS_TABLE)
+
+        for idx_sql in CREATE_INDEXES_SQL:
+            cursor.execute(idx_sql)
+
 
         # Auto-migrate columns if table existed with older schema
         cursor.execute("PRAGMA table_info(daily_metrics)")

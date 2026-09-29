@@ -28,5 +28,11 @@ def test_publish_report_to_telegraph(monkeypatch, tmp_path):
     mock_post = MagicMock(side_effect=[mock_account_resp, mock_page_resp])
 
     with patch("requests.post", mock_post):
-        url = publish_report_to_telegraph("Test Title", "# Section\nContent body")
+        url = publish_report_to_telegraph("Test Title", "# Section\nContent body", enable_telegraph=True)
         assert url == "https://telegra.ph/Test-Page-09-19"
+
+def test_publish_report_to_telegraph_disabled():
+    with pytest.raises(RuntimeError) as exc_info:
+        publish_report_to_telegraph("Test Title", "# Section\nContent body", enable_telegraph=False)
+    assert "disabled" in str(exc_info.value)
+

@@ -233,6 +233,9 @@ def calculate_baseline(
     from src.analytics.memory_engine import build_memory_context
     adaptive_memory = build_memory_context(target_date, days=60, db_path=db_path)
 
+    from src.analytics.acwr import calculate_acwr
+    acwr_data = calculate_acwr(target_date, days=28, db_path=db_path)
+
     return {
         "target_date": target_date,
         "target_metrics": target_metrics,
@@ -243,5 +246,6 @@ def calculate_baseline(
         "metrics_baseline": metrics_baseline,
         "metrics_baseline_180d": metrics_baseline_180d,
         "training_load_7d": training_load_7d,
+        "acwr": acwr_data,
         "adaptive_memory": adaptive_memory
     }

@@ -232,9 +232,15 @@ class TelegramMealBot:
                 )
                 export_report_to_file(today_str, analysis_res["report_markdown"])
 
-                # 4. Split report into 4 Message Cards & send sequentially
-                sections = split_report_into_sections(analysis_res["report_markdown"])
-                send_multi_section_report(sections, chat_id=chat_id, bot_token=self.bot_token)
+                # 4. Deliver Glanceable Summary Telegram Card
+                from src.analytics.prompt_engine import generate_telegram_card_fallback
+                card_text = analysis_res.get("telegram_card")
+                if not card_text:
+                    card_text = generate_telegram_card_fallback(baseline_data)
+                r_type = (baseline_data.get("report_type") or "morning").lower()
+                report_link = f"{settings.base_web_url}/report/{today_str}/{r_type}"
+                telegram_msg = f"{card_text}\n\n📄 Xem phân tích chi tiết: {report_link}"
+                send_multi_section_report([telegram_msg], chat_id=chat_id, bot_token=self.bot_token)
                 print(f"🎉 Async /report completed successfully for chat_id: {chat_id}")
             except Exception as exc:
                 print(f"❌ Async /report execution failed: {exc}")
@@ -298,19 +304,28 @@ class TelegramMealBot:
             date_str = now_dt.strftime("%Y-%m-%d")
             ts_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
 
+            from src.analytics.prompt_engine import get_effective_weight_kg
+            from src.services.nutrition_calculator import calculate_daily_macro_targets
+            eff_w = get_effective_weight_kg({"weight_kg": 65.6})
+            macro_res = calculate_daily_macro_targets(weight_kg=eff_w, day_type="rest", uric_acid_umol_l=442.0)
+            target_cal = macro_res["target_calories"]
+            target_p = macro_res["protein_g"]
+            target_c = macro_res["carb_g"]
+            target_f = macro_res["fat_g"]
+
             analysis = {
                 "date": date_str,
                 "timestamp": ts_str,
                 "meal_type": "daily_estimate",
-                "dishes": ["Bữa ăn tiêu chuẩn Rest Day (2,150 kcal, 122g Protein)"],
-                "total_calories": 2150,
-                "protein_g": 122.0,
-                "carb_g": 260.0,
-                "fat_g": 60.0,
+                "dishes": [f"Bữa ăn tiêu chuẩn Rest Day (~{target_cal} kcal, {target_p}g Protein)"],
+                "total_calories": target_cal,
+                "protein_g": target_p,
+                "carb_g": target_c,
+                "fat_g": target_f,
                 "alcohol_units": 0.0,
                 "alcohol_description": "Không có cồn",
                 "sleep_risk_assessment": "✅ Tác động Phục hồi & Giấc ngủ: Khẩu phần tiêu chuẩn hoàn tất trước 19:00, tối ưu cho phục hồi.",
-                "short_summary": "Đã nạp ước lượng chuẩn Rest Day (~2,150 kcal, 122g Protein)."
+                "short_summary": f"Đã nạp ước lượng chuẩn Rest Day (~{target_cal} kcal, {target_p}g Protein)."
             }
             record_id = save_nutrition_log(analysis)
             reply_text = build_telegram_nutrition_reply(analysis)
@@ -877,11 +892,13 @@ def calculate_live_progress(date_str: Optional[str] = None, db_path: Optional[Pa
     except Exception:
         pass
 
-    target_cal = 2150
     eff_w = get_effective_weight_kg({"weight_kg": weight_kg})
-    target_p = round(1.9 * eff_w, 1) if eff_w else 123.7
-    target_f = round(0.9 * eff_w, 1) if eff_w else 58.9
-    target_c = round(max(0, target_cal - (target_p * 4 + target_f * 9)) / 4.0, 1)
+    from src.services.nutrition_calculator import calculate_daily_macro_targets
+    macro_res = calculate_daily_macro_targets(weight_kg=eff_w, day_type="rest", uric_acid_umol_l=442.0)
+    target_cal = macro_res["target_calories"]
+    target_p = macro_res["protein_g"]
+    target_c = macro_res["carb_g"]
+    target_f = macro_res["fat_g"]
 
     rem_cal = max(0, target_cal - tot_cal)
     rem_p = round(max(0.0, target_p - tot_p), 1)

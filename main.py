@@ -229,57 +229,36 @@ def status():
 
 @cli.command()
 @click.option('--date', default=None, help='Target date in YYYY-MM-DD format (default: today)')
+@click.option('--type', 'report_type', default='auto', type=click.Choice(['auto', 'morning', 'midday', 'evening']), help='Report type (default: auto)')
 @click.option('--dry-run', is_flag=True, help='Print generated prompt without calling LLM API')
 @click.option('--force', is_flag=True, help='Force re-generation of AI analysis report')
 @click.option('--send-telegram', is_flag=True, help='Send generated report directly to Telegram after analysis')
-def analyze(date, dry_run, force, send_telegram):
+def analyze(date, report_type, dry_run, force, send_telegram):
     """Run 30-day baseline physiology analysis & LLM report generation for a target date."""
+    from src.analytics.pipeline import run_health_pipeline
     target_date = date or datetime.now().strftime("%Y-%m-%d")
-    click.echo(f"🧠 Running Garmin Health AI Analysis for date: {target_date}...")
+    click.echo(f"🧠 Running Garmin Health AI Analysis ({report_type}) for date: {target_date}...")
 
-    # 1. Compute baseline & fetch target date metrics
-    baseline_data = calculate_baseline(target_date, days=30)
-    sample_size = baseline_data["sample_size_days"]
-    click.echo(f"📊 Baseline computed using {sample_size} historical days.")
-
-    # 2. Generate report using LLM Analyst (or dry run)
-    res = generate_health_analysis(baseline_data, dry_run=dry_run)
+    res = run_health_pipeline(
+        target_date=target_date,
+        report_type=report_type,
+        dry_run=dry_run,
+        send_telegram=send_telegram
+    )
 
     if dry_run:
         click.echo("\n--- DRY RUN PROMPT PREVIEW ---")
-        click.echo(res["raw_prompt"])
+        click.echo(res.get("raw_prompt", ""))
         click.echo("------------------------------\n")
         click.echo("💡 Dry run complete. No API tokens were used.")
         return
 
-    # 3. Save report to DB & File
-    save_report_to_db(
-        date=target_date,
-        report_markdown=res["report_markdown"],
-        raw_prompt=res["raw_prompt"],
-        model_used=res["model_used"],
-        status="SUCCESS",
-        prompt_tokens=res.get("prompt_tokens", 0),
-        completion_tokens=res.get("completion_tokens", 0)
-    )
-
-    exported_path = export_report_to_file(target_date, res["report_markdown"])
-
-    click.echo(f"✅ AI Analysis completed successfully using {res['model_used']}!")
+    click.echo(f"✅ AI Analysis completed successfully using {res.get('model_used')}!")
     click.echo(f"   - Tokens used: {res.get('prompt_tokens', 0)} prompt / {res.get('completion_tokens', 0)} completion")
-    click.echo(f"   - Saved report to SQLite database (ai_reports table)")
-    click.echo(f"   - Exported Markdown report to: {exported_path}")
+    click.echo(f"   - Saved report to SQLite database (`daily_reports` table, unique on date & type)")
+    click.echo(f"   - Exported Markdown report to: {res.get('exported_path')}")
     click.echo("\n--- HEALTH JOURNAL PREVIEW ---")
-    click.echo(res["report_markdown"])
-
-    if send_telegram:
-        click.echo(f"\n📲 Dispatching AI analysis report to Telegram...")
-        from src.delivery.telegram_bot import send_telegram_report
-        ok = send_telegram_report(res["report_markdown"])
-        if ok:
-            click.echo("🎉 Report successfully delivered to Telegram in 4 Message Cards!")
-        else:
-            click.echo("⚠️ Failed to send report to Telegram. Check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID settings.")
+    click.echo(res.get("report_markdown", ""))
 
 
 @cli.command()
@@ -336,13 +315,25 @@ def sync_google_health(target_date):
 @cli.command("bot")
 @click.option("--once", is_flag=True, help="Run single update poll and exit")
 def run_bot(once):
-    """Run Telegram Bot listener to process photo messages of meal/pub food."""
+    """Run Telegram Bot listener daemon to process photo messages of meal/pub food."""
+    from src.utils.pid_lock import acquire_bot_pid_lock
+    bot_lock = acquire_bot_pid_lock()
+    if not bot_lock:
+        click.echo("⚠️ Đã có một tiến trình Bot đang chạy nền trên máy. Hủy lệnh để tránh lỗi 409 Conflict.")
+        sys.exit(0)
+
+    click.echo("=" * 60)
+    click.echo("🤖 Garmin Health AI - Telegram Bot Listener")
+    click.echo("📌 Đang lắng nghe 24/7 ảnh bữa ăn & tin nhắn tương tác...")
+    click.echo("=" * 60)
+
     from src.delivery.telegram_bot import TelegramMealBot
     try:
         bot = TelegramMealBot()
         bot.poll_updates(once=once)
     except Exception as exc:
         click.echo(f"❌ Failed to start Telegram Bot: {exc}", err=True)
+
 
 @cli.command("analyze-image")
 @click.argument("image_path", type=click.Path(exists=True))
@@ -365,54 +356,30 @@ def analyze_image(image_path, caption):
 
 @cli.command("run-daily")
 @click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
-def run_daily(target_date):
-    """Execute complete daily pipeline: sync data -> compute baseline & AI report -> publish Telegraph -> send Executive Brief to Telegram."""
+@click.option("--type", "report_type", default="auto", type=click.Choice(["auto", "morning", "midday", "evening"]), help="Report type (default: auto)")
+def run_daily(target_date, report_type):
+    """Execute complete daily pipeline: sync data -> compute baseline & AI report -> send Executive Brief to Telegram."""
     today_str = target_date or datetime.now().strftime("%Y-%m-%d")
-    click.echo(f"🚀 Running Daily Garmin Health AI Pipeline for date: {today_str}...")
+    click.echo(f"🚀 Running Daily Garmin Health AI Pipeline ({report_type}) for date: {today_str}...")
 
     # Step 1: Sync live metrics
-    click.echo(f"🔄 Step 1/4: Syncing Garmin health data for {today_str}...")
+    click.echo(f"🔄 Step 1/3: Syncing Garmin health data for {today_str}...")
     try:
         sync_res = fetch_and_store_daily_data(today_str)
         click.echo(f"✅ Data synced successfully for {sync_res.date}!")
     except Exception as exc:
         click.echo(f"⚠️ Warning: Live sync encountered error: {exc}. Proceeding with existing DB metrics...")
 
-    # Step 2: Generate AI Report & Executive Brief
-    click.echo(f"🧠 Step 2/4: Computing 30-day baseline, AI report & Executive Brief...")
-    baseline_data = calculate_baseline(today_str, days=30)
-    analysis_res = generate_health_analysis(baseline_data, dry_run=False)
-
-    from src.analytics.prompt_engine import generate_executive_brief
-    quick_brief = generate_executive_brief(baseline_data)
-
-    save_report_to_db(
-        date=today_str,
-        report_markdown=analysis_res["report_markdown"],
-        raw_prompt=analysis_res["raw_prompt"],
-        model_used=analysis_res["model_used"],
-        status="SUCCESS",
-        prompt_tokens=analysis_res.get("prompt_tokens", 0),
-        completion_tokens=analysis_res.get("completion_tokens", 0)
+    # Step 2 & 3: Run health pipeline & deliver to Telegram
+    from src.analytics.pipeline import run_health_pipeline
+    click.echo(f"🧠 Step 2/3: Computing baseline, AI report ({report_type}) & saving versioned record...")
+    analysis_res = run_health_pipeline(
+        target_date=today_str,
+        report_type=report_type,
+        dry_run=False,
+        send_telegram=True
     )
-
-    exported_path = export_report_to_file(today_str, analysis_res["report_markdown"])
-    click.echo(f"✅ AI Report generated & exported to: {exported_path}")
-
-    # Step 3: Split AI report into 4 sequential Message Cards & Dispatch to Telegram
-    click.echo(f"📲 Step 3/3: Splitting AI report into 4 Message Cards & Dispatching to Telegram...")
-    from src.analytics.prompt_engine import split_report_into_sections
-    from src.delivery.telegram_bot import send_multi_section_report
-
-    sections = split_report_into_sections(analysis_res["report_markdown"])
-    click.echo(f"📊 Report split into {len(sections)} Message Card(s). Sending sequentially...")
-
-    delivery_ok = send_multi_section_report(sections)
-
-    if delivery_ok:
-        click.echo("🎉 Daily execution complete: 4 Message Cards successfully delivered to Telegram!")
-    else:
-        click.echo("⚠️ Daily execution complete: Report saved locally, but Telegram delivery encountered an issue.")
+    click.echo(f"✅ Daily execution complete for date {today_str} ({report_type})!")
 
 @cli.command("send-report")
 @click.option('--date', default=None, help='Target date in YYYY-MM-DD format (default: today)')
@@ -484,8 +451,26 @@ def evening_checkin(date, send_telegram):
             click.echo("⚠️ Notice: Telegram delivery failed or credentials missing.")
 
 
+@cli.command("web")
+@click.option("--host", default=None, help="Host address to bind (default: 127.0.0.1)")
+@click.option("--port", default=None, type=int, help="Port to listen on (default: 8000)")
+def web(host, port):
+    """Start local Web Dashboard server (FastAPI + Uvicorn) for Garmin Health AI Reports."""
+    import uvicorn
+    from config.settings import settings
+    w_host = host or settings.web_host
+    w_port = port or settings.web_port
+    click.echo("=" * 60)
+    click.echo(f"🌐 Garmin Health AI - Local Web Dashboard")
+    click.echo(f"📌 Running at: http://{w_host}:{w_port}")
+    click.echo(f"📄 View reports at: http://{w_host}:{w_port}/report/YYYY-MM-DD/type")
+    click.echo("=" * 60)
+    uvicorn.run("src.web.app:app", host=w_host, port=w_port, reload=False)
+
+
 if __name__ == "__main__":
     cli()
+
 
 
 

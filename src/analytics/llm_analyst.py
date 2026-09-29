@@ -158,11 +158,10 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
 
     # Candidate models in order of priority & quota availability
     default_candidates = [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-flash-lite-latest",
-        "gemini-flash-latest"
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
     ]
     env_model = (settings.gemini_model or "").strip()
     raw_candidates = ([env_model] if env_model else []) + default_candidates
@@ -270,23 +269,30 @@ def generate_health_analysis(
     """
     from src.analytics.prompt_engine import (
         SYSTEM_PROMPT,
+        get_system_prompt,
         build_advanced_user_prompt,
         get_vietnamese_date_str,
         get_effective_weight_kg,
-        clean_report_text
+        clean_report_text,
+        extract_report_and_telegram_card,
+        generate_telegram_card_fallback
     )
     target_date = baseline_data["target_date"]
     date_vn = get_vietnamese_date_str(target_date)
     tm = baseline_data.get("target_metrics", {})
     w_kg = get_effective_weight_kg(tm)
     weight_str = f"{w_kg} kg"
-    system_prompt = SYSTEM_PROMPT.format(date=date_vn, weight_kg=weight_str)
+    r_type = (baseline_data.get("report_type") or "morning").lower()
+    system_prompt = get_system_prompt(r_type, date_vn, weight_str)
     user_prompt = build_advanced_user_prompt(baseline_data)
     raw_prompt = f"[SYSTEM PROMPT]\n{system_prompt}\n\n[USER PROMPT]\n{user_prompt}"
 
+
     if dry_run:
+        fallback_card = generate_telegram_card_fallback(baseline_data)
         return {
             "report_markdown": f"DRY RUN MODE - PROMPT PREVIEW FOR {target_date}:\n\n" + raw_prompt,
+            "telegram_card": fallback_card,
             "raw_prompt": raw_prompt,
             "model_used": "dry-run",
             "prompt_tokens": 0,
@@ -349,7 +355,10 @@ def generate_health_analysis(
             ts_raw = tm.get("training_status")
             ts_display = TRAINING_STATUS_MAP.get(str(ts_raw).upper(), str(ts_raw).replace("_2", "") if ts_raw else "Phục hồi (Recovery)")
 
-            protein_target = round(1.9 * float(w_kg), 1)
+            from src.services.nutrition_calculator import calculate_daily_macro_targets
+            macro_targets = calculate_daily_macro_targets(weight_kg=float(w_kg), day_type="rest", uric_acid_umol_l=442.0)
+            protein_target = macro_targets["protein_g"]
+            target_cal_est = macro_targets["target_calories"]
 
             race_countdown_str = (
                 f"• **Sự kiện thi đấu:** {race_info['name']} ({race_info['distance']}) vào ngày {race_info['date']} — **Còn đúng {race_info['days_to_race']} ngày** (Giai đoạn Dynamic Tapering & Giảm tải sâu)."
@@ -391,53 +400,124 @@ def generate_health_analysis(
 
             if actual_protein > 0 or actual_cal > 0:
                 p_diff = round(protein_target - actual_protein, 1)
-                c_diff = int(2150 - actual_cal)
+                c_diff = int(target_cal_est - actual_cal)
                 if p_diff > 0:
                     compensation_sentence = f"Do ngày hôm qua nạp thiếu {p_diff}g Protein và {c_diff} kcal so với mục tiêu, hôm nay hãy bổ sung thêm 150g thịt bò thăn vào bữa trưa và 1 hũ sữa chua Hy Lạp Chobani vào bữa phụ chiều để bù đắp thâm hụt năng lượng và tái tạo cơ bắp."
                 else:
                     compensation_sentence = f"Ngày hôm qua đã đáp ứng đủ chỉ tiêu Protein ({actual_protein}g vs mục tiêu {protein_target}g), hôm nay tiếp tục duy trì chế độ ăn chuẩn theo kế hoạch."
                 recap_line = f"- **Tổng Nạp Thực tế Đêm qua & Hướng dẫn Bù trừ:** Tổng nạp thực tế ghi nhận từ nhật ký: **~{actual_cal} kcal** | Protein: **{actual_protein}g**. {compensation_sentence}"
             else:
-                recap_line = f"- **Tổng Nạp Thực tế Đêm qua & Hướng dẫn Bù trừ:** Chưa ghi nhận bản ghi dinh dưỡng trong CSDDL, duy trì nạp đủ Protein mục tiêu **{protein_target}g** và **~2,150 kcal**."
+                recap_line = f"- **Tổng Nạp Thực tế Đêm qua & Hướng dẫn Bù trừ:** Chưa ghi nhận bản ghi dinh dưỡng trong CSDDL, duy trì nạp đủ Protein mục tiêu **{protein_target}g** và **~{target_cal_est} kcal**."
 
-            offline_report = (
-                f"# 🩺 Báo cáo Phân tích Sinh lý học & Phục hồi Toàn diện ({date_vn})\n\n"
-                f"===SECTION_BREAK===\n"
-                f"### 🧠 1. Trạng thái Thần kinh Thực vật & Hô hấp Đêm:\n"
-                f"- **Cân bằng Thần kinh Thực vật (HRV Overnight vs Baseline 30 ngày):** Chỉ số HRV đêm qua đạt **{hrv_str}** ({hrv_eval_str}, Status: {tm.get('hrv_status') or 'BALANCED'}). Hệ thần kinh thực vật nằm trong dải cân bằng đối giao cảm, phản ánh khả năng hấp thụ tải vận động tích lũy ổn định.\n"
-                f"- **Nhịp tim nghỉ & Stress Deviation (RHR & Stress):** Nhịp tim nghỉ RHR đêm đạt **{rhr_str}** ({rhr_eval_str}). Mức độ Stress trung bình ban ngày ghi nhận **{tm.get('avg_stress_level') or 'N/A'}** (Stress cao nhất: {tm.get('max_stress_level') or 'N/A'}).\n"
-                f"- **Sinh lý Hô hấp & Nồng độ Oxy SpO2 Đêm:** Nhịp thở trung bình trong khi ngủ đạt **{tm.get('respiration_avg') or '14.5'} brpm** (Biến thiên: {tm.get('respiration_min') or '12.0'} - {tm.get('respiration_max') or '18.0'} brpm). Nồng độ Oxy SpO2 trung bình đêm đạt **{tm.get('spo2_avg') or '96'}%** (Thấp nhất: {tm.get('spo2_min') or '93'}%). Không có dấu hiệu suy giảm oxy mô hay bất thường áp lực đường thở.\n"
-                f"- **Cân nặng & Thể trạng OMRON VIVA / Garmin:** Cân nặng thực tế ghi nhận **{w_kg} kg** | Tỷ lệ % Mỡ cơ thể: **{tm.get('body_fat_pct') or 'N/A'}%** | Tỷ lệ % Cơ xương: **{tm.get('muscle_mass_pct') or 'N/A'}%** | Mỡ nội tạng: **{tm.get('visceral_fat') or 'N/A'}**. Tỷ lệ công suất/trọng lượng cơ thể (Power-to-Weight Ratio) ở mức tối ưu cho chạy bộ đường dài.\n\n"
-                f"===SECTION_BREAK===\n"
-                f"### 💤 2. Bóc tách Cấu trúc Giấc ngủ & Tái tạo Sinh học:\n"
-                f"- **Phân bổ Các Giai đoạn Giấc ngủ (Sleep Architecture):** Điểm số giấc ngủ đạt **{sleep_score}/100** (Tổng thời gian ngủ: {_format_seconds(tm.get('sleep_duration_seconds'))}). Chi tiết từng giai đoạn: Ngủ sâu (Deep Sleep): **{deep_str}** | Ngủ mơ (REM Sleep): **{rem_str}** | Ngủ nông (Light Sleep): **{_format_seconds(light_sec)}** | Thức giấc (Awake): **{_format_seconds(awake_sec)}**.\n"
-                f"- **Hiệu suất Sạc Body Battery & Trí nhớ Động (Adaptive Memory):** Điểm sạc Body Battery đêm qua đạt **+{bb_charged} điểm** (Cao nhất: {tm.get('body_battery_highest') or 'N/A'}, Thấp nhất: {tm.get('body_battery_lowest') or 'N/A'}). Theo quy luật Trí nhớ Động cá nhân, mỗi 15 phút Ngủ sâu Deep Sleep đóng góp trung bình +2.5 đến +3.2 điểm Body Battery.\n"
-                f"{nut_correlation_text}\n\n"
-                f"===SECTION_BREAK===\n"
-                f"### 🏃‍♂️ 3. Kê đơn Vận động & Tải Tập luyện Hôm nay:\n"
-                f"{race_countdown_str}\n"
-                f"• **Bối cảnh Microcycle & Trạng thái Sẵn sàng:** Điểm Training Readiness đạt **{tm.get('training_readiness_score') or 'N/A'}/100** | Trạng thái tập luyện: **{ts_display}** | Tổng tải 7 ngày: **{tl.get('total_active_calories', 0)} kcal** ({tl.get('total_workout_count', 0)} bài tập). Thời gian phục hồi còn lại: **{tm.get('recovery_time_hours') or 0} giờ**.\n"
-                f"• **Kê đơn Bài tập Hôm nay:** Thực hiện bài chạy thả lỏng hiếu khí **MAF Zone 2** (Khung giờ sáng 05:00 - 06:00 hoặc chiều trước 18:00). Cự ly chỉ định: **5.0 km - 7.0 km** | Cường độ: Giữ nhịp tim dưới ngưỡng MAF **(180 - 44 = 136 bpm)** | Nhịp chân duy trì: **176 - 180 spm**.\n"
-                f"• **Động học Chạy bộ HRM-Pro:** Duy trì Cân bằng tiếp đất Chân Trái / Chân Phải **GCT Balance 50.0% L / 50.0% R** (Độ lệch < 1.0%) để triệt tiêu lực chấn động lên gân gót Achilles và khớp gối thân dưới.\n\n"
-                f"===SECTION_BREAK===\n"
-                f"### 🍱 4. Kế hoạch Dinh dưỡng & Thực đơn Cá nhân hóa (Precision Nutrition):\n"
-                f"- **Macro Mục tiêu (Cân nặng {w_kg} kg):** Nhu cầu Protein mục tiêu đạt **{protein_target}g** (1.9g x {w_kg}kg). Ước tính tổng Calo nạp vào: **~2,150 kcal** (Tỷ lệ Macro: 50% Carbs / 30% Protein / 20% Fat).\n"
-                f"{recap_line}\n"
-                f"- **Thực đơn Gợi ý Từng Bữa:**\n"
-                f"  + **Bữa sáng (06:30 - 07:00):** 1 hũ Sữa chua Hy Lạp Chobani (15g Protein) + 50g Yến mạch + 1 quả chuối chín + 300ml nước khoáng kiềm Fujiwa.\n"
-                f"  + **Bữa trưa (11:30 - 12:30):** 200g Thịt bò thăn áp chảo / Hải sản hấp + 1.5 chén cơm gạo lứt + 200g Rau cải xanh luộc.\n"
-                f"  + **Bữa tối (BẮT BUỘC KẾT THÚC TRƯỚC 18:30 - 19:00):** 180g Cá hồi áp chảo / Sashimi cá hồi + Lẩu thanh đạm rau nấm + Rau củ hấp. Toàn bộ quá trình tiêu hóa phải hoàn tất trước 21:00 để hạ thấp RHR đêm và bảo vệ giấc ngủ sâu Deep Sleep.\n"
-                f"  + **Bổ sung Vi chất & Nước khoáng (20:30 - 21:00):** 1 viên Magie Bisglycinate (400mg) giúp thư giãn thần kinh + Bù đủ 3.0L Nước khoáng kiềm Fujiwa rải đều trong ngày.\n"
-            )
+            from src.analytics.pipeline import detect_today_morning_activity
+            act_info_today = detect_today_morning_activity(target_date, db_path=baseline_data.get("db_path"))
+            has_morning_workout = act_info_today["morning_workout_done"]
+
+            if has_morning_workout:
+                sec3_header = "### 🏃‍♂️ 3. Đánh giá Buổi tập Sáng nay & Kế hoạch Phục hồi Chiều:"
+                sec3_content = (
+                    f"• **Đánh giá Buổi tập Sáng nay:** Đã hoàn thành bài chạy/vận động sáng nay. "
+                    f"Dữ liệu bài tập đã được đồng bộ từ đồng hồ Garmin & đai HRM-Pro.\n"
+                    f"• **Kế hoạch Phục hồi Chiều:** NGHIÊM CẤM kê đơn bài chạy mới cho buổi chiều. "
+                    f"Chỉ thực hiện phục hồi thụ động: Stretching thả lỏng gân cơ, 3 tổ hạ gót thụ động (Eccentric Heel Drops) trên bậc thềm và ngâm chân nước mát."
+                )
+            else:
+                sec3_header = "### 🏃‍♂️ 3. Kê đơn Vận động & Tải Tập luyện Hôm nay:"
+                sec3_content = (
+                    f"• **Kê đơn Bài tập Hôm nay:** Thực hiện bài chạy thả lỏng hiếu khí **MAF Zone 2** (Khung giờ sáng 05:00 - 06:00 hoặc chiều trước 18:00). Cự ly chỉ định: **5.0 km - 7.0 km** | Cường độ: Giữ nhịp tim dưới ngưỡng MAF **(180 - 44 = 136 bpm)** | Nhịp chân duy trì: **176 - 180 spm**.\n"
+                    f"• **Động học Chạy bộ HRM-Pro:** Duy trì Cân bằng tiếp đất Chân Trái / Chân Phải **GCT Balance 50.0% L / 50.0% R** (Độ lệch < 1.0%) để triệt tiêu lực chấn động lên gân gót Achilles và khớp gối thân dưới."
+                )
+
+            from src.analytics.prompt_engine import get_report_title_header
+            r_type = (baseline_data.get("report_type") or "morning").lower()
+            header_title_offline = get_report_title_header(r_type, date_vn)
+
+            if r_type == "midday":
+                offline_report = (
+                    f"{header_title_offline}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 🏃‍♂️ 1. Đánh giá Buổi tập Sáng nay & Động học HRM-Pro:\n"
+                    f"• **Phân tích Thực tế Buổi tập Sáng:** {sec3_content}\n"
+                    f"• **Động học Chạy bộ HRM-Pro:** Duy trì Cadence 178 - 182 spm để bảo vệ gân Achilles chân trái (GCT Balance 50.3% L). Thực hiện bài tập hạ gót thụ động (Eccentric Heel Drops) nhẹ nhàng trên bậc thềm.\n"
+                    f"• **Hấp thu Tải Tập luyện & ACWR:** Điểm Training Readiness đạt **{tm.get('training_readiness_score') or 'N/A'}/100** | Tổng tải 7 ngày: **{tl.get('total_active_calories', 0)} kcal**.\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### ⚡ 2. Trạng thái Readiness Hiện tại & Chỉ đạo Phục hồi Chiều:\n"
+                    f"• **Điểm Sẵn sàng & Phục hồi:** Readiness {tm.get('training_readiness_score') or 'N/A'}/100 | Recovery Time còn lại: {tm.get('recovery_time_hours') or 0} giờ.\n"
+                    f"• **Chỉ đạo Phục hồi Chiều:** NGHIÊM CẤM kê đơn bất kỳ bài chạy bộ mới nào cho buổi chiều! Buổi chiều CHỈ ĐƯỢC kê đơn phục hồi thụ động (stretching thả lỏng, foot soak, heel drops).\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 🍱 3. Đối soát Dinh dưỡng & Quota Macro Cho Chiều/Tối:\n"
+                    f"• **Macro Mục tiêu (Cân nặng {w_kg} kg):** Protein mục tiêu: **{protein_target}g** | Total Calo mục tiêu: **~{target_cal_est} kcal**.\n"
+                    f"• {recap_line}\n"
+                    f"• **Khóa Protein Bữa tối:** Protein bữa tối KHÔNG ĐƯỢC VƯỢT QUÁ **30.0g** (bảo vệ thận & HRV đêm với Uric Acid 442 µmol/L).\n"
+                )
+            elif r_type == "evening":
+                steps = tm.get("total_steps") or 0
+                offline_report = (
+                    f"{header_title_offline}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 📊 1. Tổng kết Vận động & Cân đối Năng lượng Ngày:\n"
+                    f"• **Tổng kết Vận động:** {steps:,} bước chân | Active Calo tiêu hao: ~{int(act_info_today['active_calories'])} kcal.\n"
+                    f"• **Cân đối Năng lượng:** {recap_line}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 🍽️ 2. Đánh giá Bữa tối & Khoảng cách Tiêu hóa:\n"
+                    f"• **Khoảng trống Tiêu hóa Ban đêm:** Bữa tối kết thúc trước 21:30 ít nhất 2.0 - 2.5 tiếng để đảm bảo dạ dày rỗng, giúp phó giao cảm chiếm ưu thế, hạ RHR đêm và kéo dài giấc ngủ sâu Deep Sleep.\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 💤 3. Giao thức Vệ sinh Giấc ngủ & Phục hồi Đêm:\n"
+                    f"• **Bổ sung Vi chất:** 1 viên Magie Bisglycinate (300mg - 400mg) + 3.0L Nước khoáng kiềm Fujiwa rải đều.\n"
+                    f"• **Vệ sinh Giấc ngủ:** Giãn cơ nhẹ nhàng 10m | Mốc tắt toàn bộ màn hình/thiết bị điện tử trước 21:00 (30 phút trước ngủ) | Giờ đi ngủ cố định 21:30.\n"
+                )
+            else:
+                offline_report = (
+                    f"{header_title_offline}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 🧠 1. Trạng thái Thần kinh Thực vật & Hô hấp Đêm:\n"
+                    f"- **Cân bằng Thần kinh Thực vật (HRV Overnight vs Baseline 30 ngày):** Chỉ số HRV đêm qua đạt **{hrv_str}** ({hrv_eval_str}, Status: {tm.get('hrv_status') or 'BALANCED'}). Hệ thần kinh thực vật nằm trong dải cân bằng đối giao cảm, phản ánh khả năng hấp thụ tải vận động tích lũy ổn định.\n"
+                    f"- **Nhịp tim nghỉ & Stress Deviation (RHR & Stress):** Nhịp tim nghỉ RHR đêm đạt **{rhr_str}** ({rhr_eval_str}). Mức độ Stress ban đêm (Overnight Sleep Stress) ghi nhận **{tm.get('avg_stress_level') or 'N/A'}** (Stress cao nhất: {tm.get('max_stress_level') or 'N/A'}).\n"
+                    f"- **Sinh lý Hô hấp & Nồng độ Oxy SpO2 Đêm:** Nhịp thở trung bình trong khi ngủ đạt **{tm.get('respiration_avg') or '14.5'} brpm** (Biến thiên: {tm.get('respiration_min') or '12.0'} - {tm.get('respiration_max') or '18.0'} brpm). Nồng độ Oxy SpO2 trung bình đêm đạt **{tm.get('spo2_avg') or '96'}%** (Thấp nhất: {tm.get('spo2_min') or '93'}%). Không có dấu hiệu suy giảm oxy mô hay bất thường áp lực đường thở.\n"
+                    f"- **Cân nặng & Thể trạng OMRON VIVA / Garmin:** Cân nặng thực tế ghi nhận **{w_kg} kg** | Tỷ lệ % Mỡ cơ thể: **{tm.get('body_fat_pct') or 'N/A'}%** | Tỷ lệ % Cơ xương: **{tm.get('muscle_mass_pct') or 'N/A'}%** | Mỡ nội tạng: **{tm.get('visceral_fat') or 'N/A'}**. Tỷ lệ công suất/trọng lượng cơ thể (Power-to-Weight Ratio) ở mức tối ưu cho chạy bộ đường dài.\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 💤 2. Bóc tách Cấu trúc Giấc ngủ & Tái tạo Sinh học:\n"
+                    f"- **Phân bổ Các Giai đoạn Giấc ngủ (Sleep Architecture):** Điểm số giấc ngủ đạt **{sleep_score}/100** (Tổng thời gian ngủ: {_format_seconds(tm.get('sleep_duration_seconds'))}). Chi tiết từng giai đoạn: Ngủ sâu (Deep Sleep): **{deep_str}** | Ngủ mơ (REM Sleep): **{rem_str}** | Ngủ nông (Light Sleep): **{_format_seconds(light_sec)}** | Thức giấc (Awake): **{_format_seconds(awake_sec)}**.\n"
+                    f"- **Hiệu suất Sạc Body Battery & Trí nhớ Động (Adaptive Memory):** Điểm sạc Body Battery đêm qua đạt **+{bb_charged} điểm** (Cao nhất: {tm.get('body_battery_highest') or 'N/A'}, Thấp nhất: {tm.get('body_battery_lowest') or 'N/A'}). Theo quy luật Trí nhớ Động cá nhân, mỗi 15 phút Ngủ sâu Deep Sleep đóng góp trung bình +2.5 đến +3.2 điểm Body Battery.\n"
+                    f"{nut_correlation_text}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"{sec3_header}\n"
+                    f"{race_countdown_str}\n"
+                    f"• **Bối cảnh Microcycle & Trạng thái Sẵn sàng:** Điểm Training Readiness đạt **{tm.get('training_readiness_score') or 'N/A'}/100** | Trạng thái tập luyện: **{ts_display}** | Tổng tải 7 ngày: **{tl.get('total_active_calories', 0)} kcal** ({tl.get('total_workout_count', 0)} bài tập). Thời gian phục hồi còn lại: **{tm.get('recovery_time_hours') or 0} giờ**.\n"
+                    f"{sec3_content}\n\n"
+                    f"===SECTION_BREAK===\n"
+                    f"### 🍱 4. Kế hoạch Dinh dưỡng & Thực đơn Cá nhân hóa (Precision Nutrition):\n"
+                    f"- **Macro Mục tiêu (Cân nặng {w_kg} kg):** Nhu cầu Protein mục tiêu đạt **{protein_target}g** (1.55g x {w_kg}kg cho ngày nghỉ). Ước tính tổng Calo nạp vào: **~{target_cal_est} kcal** (Tỷ lệ Macro: 50% Carbs / 30% Protein / 20% Fat).\n"
+                    f"{recap_line}\n"
+                    f"- **Thực đơn Gợi ý Từng Bữa:**\n"
+                    f"  + **Bữa sáng (06:30 - 07:00):** 1 hũ Sữa chua Hy Lạp Chobani (15g Protein) + 50g Yến mạch + 1 quả chuối chín + 300ml nước khoáng kiềm Fujiwa.\n"
+                    f"  + **Bữa trưa (11:30 - 12:30):** 150g Thịt bò thăn áp chảo / Hải sản hấp + 1.5 chén cơm gạo lứt + 200g Rau cải xanh luộc.\n"
+                    f"  + **Bữa phụ chiều (15:30):** 1 hũ Sữa chua Hy Lạp Chobani (15g Protein) + 1/2 quả cam tươi (100g, 9.5g Carb, 47 kcal).\n"
+                    f"  + **Bữa tối (Hoàn tất 2.5 - 3.0 tiếng trước khi đi ngủ):** 120g Cá hồi áp chảo / Đậu phụ thô (Protein ~24.0g <= 30.0g max cap) + 1 chén cơm gạo lứt + Rau củ hấp. Toàn bộ quá trình tiêu hóa phải hoàn tất trước khi ngủ để hạ thấp RHR đêm và bảo vệ giấc ngủ sâu Deep Sleep.\n"
+                    f"  + **Bổ sung Vi chất & Nước khoáng (20:30 - 21:00):** 1 viên Magie Bisglycinate (400mg) giúp thư giãn thần kinh + Bù đủ 3.0L Nước khoáng kiềm Fujiwa rải đều trong ngày.\n"
+                )
+            offline_card = generate_telegram_card_fallback(baseline_data)
 
             res = {
                 "report_markdown": offline_report,
+                "telegram_card": offline_card,
                 "model_used": "garmin-health-engine (offline-fallback)",
                 "prompt_tokens": 0,
                 "completion_tokens": 0
             }
 
     res["raw_prompt"] = raw_prompt
+
+    # Extract 2-part output if present in response
+    if "telegram_card" not in res or not res["telegram_card"]:
+        full_report, telegram_card = extract_report_and_telegram_card(res.get("report_markdown", ""), baseline_data)
+        res["report_markdown"] = full_report
+        res["telegram_card"] = telegram_card
+
     if "report_markdown" in res and res["report_markdown"]:
         res["report_markdown"] = clean_report_text(res["report_markdown"])
+    if "telegram_card" in res and res["telegram_card"]:
+        res["telegram_card"] = clean_report_text(res["telegram_card"])
+
     return res
+

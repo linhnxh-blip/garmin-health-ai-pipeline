@@ -121,9 +121,14 @@ def markdown_to_telegraph_nodes(markdown_text: str) -> List[Dict[str, Any]]:
 def publish_report_to_telegraph(
     title: str,
     markdown_text: str,
-    author_name: str = "Garmin Health AI"
+    author_name: str = "Garmin Health AI",
+    enable_telegraph: bool = False
 ) -> str:
-    """Publish a full Markdown report to Telegraph and return the public URL (https://telegra.ph/...)."""
+    """Publish a full Markdown report to Telegraph if enable_telegraph is True. Defaults to False to keep data local."""
+    if not enable_telegraph:
+        print("ℹ️ Telegraph publishing is disabled by default. Health data is served locally via Web Dashboard.")
+        raise RuntimeError("Telegraph publishing is disabled (enable_telegraph=False)")
+
     token = get_or_create_telegraph_token()
     if not token:
         raise RuntimeError("Telegraph access token could not be established.")
