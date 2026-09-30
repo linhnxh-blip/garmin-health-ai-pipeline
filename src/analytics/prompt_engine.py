@@ -253,8 +253,19 @@ HỒ SƠ VẬN ĐỘNG VIÊN ĐA MÔN:
   + Giải phóng cơ mông nhỡ chân phải (Foam Roller).
   + Bổ sung 300-400mg Magie Bisglycinate trước khi ngủ.
 
-[RULE 4: NHẤT QUÁN ĐÁNH GIÁ (NO CONTRADICTION)]
-- Nếu bài tập sáng được đánh giá là tim lên quá cao (Zone 3/4) làm tụt Readiness, thì phần khuyến nghị tiếp theo KHÔNG ĐƯỢC đưa ra bất kỳ chỉ định kỹ thuật nào có nguy cơ làm tim tăng thêm.
+[RULE 4: NHẤT QUÁN ĐÁNH GIÁ GIỮA CÁC BÁO CÁO (NO CONTRADICTION & CONSISTENCY)]
+- Nếu bài tập sáng có nhịp tim quá cao (Zone 3/4, HR >= 145-150 bpm) làm tụt Readiness, thì trong toàn bộ các báo cáo (Midday & Evening) tuyệt đối KHÔNG ĐƯỢC mâu thuẫn gọi đó là "bài chạy phục hồi" (Recovery Run). Phải thống nhất đánh giá đó là bài tập tải cao gây mệt mỏi tim mạch.
+- Báo cáo Evening tuyệt đối KHÔNG phân tích lại chi tiết động học chạy sáng (Cadence, GCT balance), chỉ tóm tắt tổng bước chân và active calories cả ngày.
+
+[RULE 5: TRUNG THỰC CON SỐ BƯỚC CHÂN & CALO TIÊU HOA (STRICT ACCURACY FOR STEPS & CALORIES)]
+- BẮT BUỘC sử dụng chính xác con số Total Steps và Active Calories từ dữ liệu Garmin trong ngày được cung cấp trong Prompt.
+- Tuyệt đối KHÔNG tự bịa ra/suy diễn con số bước chân khác (ví dụ: không được tự bịa 12.770 bước khi Garmin đo 9.848 bước).
+- Tuyệt đối KHÔNG lấy calo của riêng bài chạy sáng (ví dụ 406 kcal) để thay thế cho tổng Active Calories tích lũy cả ngày (636 kcal).
+
+[RULE 6: ĐÁNH GIÁ DINH DƯỠNG NĂNG LƯỢNG KHÁCH QUAN & KẾT HỢP BỐI CẢNH (OBJECTIVE NUTRITION BALANCING)]
+- Khi tổng nạp calo cả ngày đang thâm hụt (ví dụ thâm hụt 500+ kcal ở tuần Tapering T-7 đến Race Day), bữa tối 700-800 kcal nạp đủ năng lượng là hoàn toàn cần thiết để bù đắp calo và hỗ trợ tích lũy Glycogen.
+- Tuyệt đối KHÔNG sử dụng ngôn từ phiến diện, tiêu cực cực đoan (như "tàn phá giấc ngủ", "nguy cơ rất lớn") chỉ vì bữa tối chứa 700-800 kcal hoặc 40g+ Fat/Protein.
+- Phân tích khoảng trống tiêu hóa một cách khách quan: nếu bữa tối kết thúc lúc 19:38 (cách giờ ngủ 21:30 là 1.85 tiếng), đưa ra gợi ý điều chỉnh nhẹ nhàng (đẩy giờ ăn lên 18:30-19:00 hoặc chuyển bớt Fat sang bữa trưa) thay vì cấm đoán phi thực tế.
 
 --- NGUYÊN TẮC VẬN ĐỘNG & LÂM SÀNG (CROSS-TRAINING & ADAPTIVE WORKOUT) ---
 - Tuyệt đối NGHIÊM CẤM kê đơn Sprint 100% all-out cho vận động viên 44 tuổi bão hòa Uric Acid 442 µmol/L.
@@ -536,9 +547,16 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
     parts.append("")
 
     if report_type in ["midday", "evening"]:
-        parts.append("--- CHỈ SỐ SINH LÝ NỀN DẪN CHIẾU TÓM TẮT ---")
+        parts.append("--- CHỈ SỐ SINH LÝ & VẬN ĐỘNG HÔM NAY DẪN CHIẾU TÓM TẮT ---")
         parts.append(f"- Training Readiness Score: {_format_value(tm.get('training_readiness_score'))}/100 | Recovery Time: {_format_value(tm.get('recovery_time_hours'), 'giờ')}")
         parts.append(f"- Sleep Score: {_format_value(tm.get('sleep_score'))}/100 | HRV Overnight: {_format_value(tm.get('hrv_last_night'), 'ms')} (Status: {tm.get('hrv_status') or 'BALANCED'}) | RHR: {_format_value(tm.get('resting_heart_rate'), 'bpm')}")
+        bs_cal = bm.get("active_calories", {})
+        b180_cal = bm_180.get("active_calories", {})
+        parts.append(f"- Active Calories (Garmin tiêu hao tích lũy cả ngày): Hôm nay = {_format_value(tm.get('active_calories'), 'kcal')} | Baseline 180d = {b180_cal.get('avg', 'NULL')} kcal | Baseline All-Time ({sample_size}d) = {bs_cal.get('avg', 'NULL')} kcal")
+        bs_steps = bm.get("total_steps", {})
+        b180_steps = bm_180.get("total_steps", {})
+        parts.append(f"- Total Steps (Garmin tổng bước chân tích lũy cả ngày): Hôm nay = {_format_value(tm.get('total_steps'))} bước (Step Goal = {_format_value(tm.get('step_goal'))} bước) | Baseline 180d = {b180_steps.get('avg', 'NULL')} | Baseline All-Time ({sample_size}d) = {bs_steps.get('avg', 'NULL')}")
+        parts.append(f"⚠️ BẮT BUỘC TRUNG THỰC DỮ LIỆU: Báo cáo BẮT BUỘC dùng chính xác con số Total Steps = {_format_value(tm.get('total_steps'))} bước và Active Calories = {_format_value(tm.get('active_calories'))} kcal ở trên. Tuyệt đối KHÔNG tự suy diễn hoặc bịa ra con số bước chân khác (như 12.770 bước), cũng KHÔNG lấy calo của bài chạy đơn lẻ làm tổng Active Calories cả ngày!")
         parts.append("⚠️ SEPARATION OF CONCERNS: TUYỆT ĐỐI KHÔNG phân tích lại cấu trúc giấc ngủ, bảng sleep norms, hay SpO2 đêm trong báo cáo phiên này!\n")
         morning_snap = baseline_data.get("morning_report_snapshot")
         if morning_snap:
