@@ -234,6 +234,28 @@ HỒ SƠ VẬN ĐỘNG VIÊN ĐA MÔN:
 - Thiết bị & Động học: Garmin Watch + Đai đo nhịp tim HRM-Pro (Cadence, GCT Balance L/R, Stride Length).
 - Thói quen Dinh dưỡng: Ưa thích thịt bò thăn, hải sản, đồ Nhật, sữa chua Hy Lạp Chobani, nước khoáng kiềm Fujiwa.
 
+=== QUY TẮC CƠ SINH HỌC & LÂM SÀNG BẮT BUỘC (BIOMECHANICAL GUARDRAILS - CHỐNG SUY DIỄN MÁY MÓC) ===
+
+[RULE 1: THỨ BẬC ƯU TIÊN VẬN ĐỘNG TRONG GIAI ĐOẠN TAPERING (T-7 ĐẾN RACE DAY)]
+- ƯU TIÊN SỐ 1: Nhịp tim & Mức độ mệt mỏi tim mạch (Cardiovascular Load). Mọi bài chạy nhẹ/tapering bắt buộc giữ ở Zone 2 / MAF (HR < 136 - 140 bpm). Bất kể guồng chân hay pace thế nào, nếu HR vượt Zone 2 thì phải ưu tiên chạy chậm lại hoặc đi bộ.
+- ƯU TIÊN SỐ 2: Độ tươi xốp của cơ bắp (Muscle Freshness). Không tạo tải mới khi Training Readiness < 40.
+- ƯU TIÊN SỐ 3: Động học chạy bộ (Cadence & GCT Balance) CHỈ LÀ THỨ YẾU.
+
+[RULE 2: NGUYÊN TẮC BÙ TRỪ SẢI CHÂN (STRIDE COMPENSATION LAW)]
+- Khi nhắc tới việc tăng Cadence (guồng chân 178 - 182 spm), BẮT BUỘC PHẢI ĐI KÈM HƯỚNG DẪN THU NGẮN SẢI CHÂN (bước nhỏ, lướt sát đất).
+- TUYỆT ĐỐI KHÔNG khuyến nghị tăng Cadence đơn lẻ mà không nhắc thu ngắn sải chân, vì sẽ làm tăng tốc độ và vọt nhịp tim.
+- Nếu vận động viên cảm thấy tăng Cadence làm tim đập nhanh và mệt mỏi: Cho phép chạy ở Cadence tự nhiên thoải mái, ưu tiên tuyệt đối nhịp tim Zone 2.
+
+[RULE 3: CẤM CAN THIỆP THAY ĐỔI KỸ THUẬT SÁT GIẢI ĐẤU (DAYS_TO_RACE <= 7)]
+- Trong vòng 7 ngày trước ngày Race (days_to_race <= 7): TUYỆT ĐỐI CẤM yêu cầu vận động viên gò ép đổi dáng chạy hoặc nâng cao cadence trên đường chạy.
+- Để bảo vệ gân Achilles trái giai đoạn này: CHỈ dùng các biện pháp ngoài đường chạy:
+  + Bài tập hạ gót thụ động (Eccentric Heel Drops) 3 set x 10-12 lần sau bài tập.
+  + Giải phóng cơ mông nhỡ chân phải (Foam Roller).
+  + Bổ sung 300-400mg Magie Bisglycinate trước khi ngủ.
+
+[RULE 4: NHẤT QUÁN ĐÁNH GIÁ (NO CONTRADICTION)]
+- Nếu bài tập sáng được đánh giá là tim lên quá cao (Zone 3/4) làm tụt Readiness, thì phần khuyến nghị tiếp theo KHÔNG ĐƯỢC đưa ra bất kỳ chỉ định kỹ thuật nào có nguy cơ làm tim tăng thêm.
+
 --- NGUYÊN TẮC VẬN ĐỘNG & LÂM SÀNG (CROSS-TRAINING & ADAPTIVE WORKOUT) ---
 - Tuyệt đối NGHIÊM CẤM kê đơn Sprint 100% all-out cho vận động viên 44 tuổi bão hòa Uric Acid 442 µmol/L.
 - Khi ACWR < 0.3 (Acute load is very low / Tải cấp tính rất thấp): Cảnh báo nguy cơ "ì cơ" (stale legs).
@@ -848,8 +870,9 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
         parts.append(
             f"\n⚠️ CỜ CHỈ DẪN BẢO VỆ GÂN ACHILLES TRÁI (GCT BALANCE LEFT = {gct_val_display}% >= 51.5%):\n"
             f"- AI BẮT BUỘC cảnh báo nguy cơ xung chấn va đập cơ học dồn lên gân gót trái (Achilles Left).\n"
-            f"- Nhắc nhở duy trì guồng chân Cadence 178 - 182 spm để đưa GCT Balance từ {gct_val_display}% L về mốc an toàn 50.3% L.\n"
-            f"- Hướng dẫn bài tập hạ gót thụ động (Eccentric Heel Drops) nhẹ nhàng trên bậc thềm để thả lỏng gân Achilles chân trái."
+            f"- Nhắc nhở duy trì guồng chân Cadence 178 - 182 spm để đưa GCT Balance về 50.3% L.\n"
+            f"- NGUYÊN TẮC BÙ TRỪ SẢI CHÂN: Khi nhắc tới tăng Cadence (178 - 182 spm), BẮT BUỘC PHẢI ĐI KÈM HƯỚNG DẪN THU NGẮN SẢI CHÂN (bước nhỏ, lướt sát đất). Tuyệt đối không khuyến nghị tăng Cadence đơn lẻ mà không nhắc thu ngắn sải chân.\n"
+            f"- Giai đoạn sát giải (days_to_race <= 7): TUYỆT ĐỐI CẤM gò ép đổi dáng chạy trên đường chạy. Ưu tiên tuyệt đối nhịp tim Zone 2 (<136-140 bpm). Bảo vệ Achilles bằng biện pháp ngoài đường chạy: Bài tập hạ gót thụ động (Eccentric Heel Drops) 3 set x 10-12 lần + Giải phóng cơ mông nhỡ chân phải (Foam Roller) + Magie Bisglycinate 300-400mg."
         )
 
     readiness_val = float(readiness_score) if readiness_score is not None else 100.0
@@ -857,19 +880,20 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
 
     if is_high_risk_exercise:
         exercise_options_str = (
-            f"  + LỰA CHỌN 1 (Chạy bộ Zone 2 phẳng): Chạy nhẹ MAF 20-30 phút (<136 bpm), Cadence ép đúng 178-182 spm. PROHIBIT (NGHIÊM CẤM): Strides bứt tốc 85-90%, intervals tốc độ cao, downhill sprints.\n"
+            f"  + LỰA CHỌN 1 (Chạy bộ Zone 2 phẳng): Chạy nhẹ MAF 20-30 phút (HR < 136-140 bpm, ưu tiên hàng đầu nhịp tim Zone 2). Nếu duy trì Cadence 178-182 spm BẮT BUỘC thu ngắn sải chân (bước nhỏ, lướt sát đất). Nếu tim tăng vọt: Chạy chậm lại hoặc đi bộ. PROHIBIT (NGHIÊM CẤM): Strides bứt tốc 85-90%, intervals tốc độ cao, downhill sprints.\n"
             f"  + LỰA CHỌN 2 (Bơi lội - Phục hồi không trọng lực): Bơi sải thả lỏng 800m - 1.000m (Zone 1/2). Triệt tiêu 90% áp lực trọng lực lên gân gót chân trái. Cảnh báo tuyệt đối không đạp chân ếch mạnh."
         )
     else:
         exercise_options_str = (
-            f"  + LỰA CHỌN 1 (Chạy bộ - Neuromuscular Priming): Chạy nhẹ MAF 25-30 phút (<136 bpm) + 4-5 tổ Strides 80m nhẹ kỹ thuật (Cadence 180-184 spm).\n"
+            f"  + LỰA CHỌN 1 (Chạy bộ - Neuromuscular Priming): Chạy nhẹ MAF 25-30 phút (<136-140 bpm, thu ngắn sải chân bước nhỏ) + 4-5 tổ Strides 80m nhẹ kỹ thuật (Cadence 180-184 spm, thu ngắn sải chân).\n"
             f"  + LỰA CHỌN 2 (Bơi lội - Phục hồi không trọng lực): Bơi sải thả lỏng 800m - 1.000m (Zone 1/2), xen kẽ 3-4 đoạn 25m guồng tay nhanh. Triệt tiêu 90% áp lực trọng lực lên gân gót chân trái. Cảnh báo không đạp chân ếch mạnh."
         )
 
     parts.append(
         f"\n💡 QUY TẮC KÊ ĐƠN VẬN ĐỘNG ĐA MÔN LỰA CHỌN 1 & 2 (DÙNG CHO MỤC 3):\n"
         f"- Điểm Training Readiness hiện tại: {_format_value(readiness_score)}/100.\n"
-        f"- BẮT BUỘC duy trì Cadence 178 - 182 spm để đưa GCT Balance từ 51.7% L về mốc an toàn 50.3% L (giảm xung kích va đập cơ học lên gân Achilles chân trái).\n"
+        f"- THỨ BẬC ƯU TIÊN: Ưu tiên 1 = Nhịp tim Zone 2 / MAF (<136-140 bpm). Ưu tiên 2 = Muscle Freshness (Readiness < 40 cấm tạo tải). Ưu tiên 3 = Cadence/GCT Balance chỉ là thứ yếu.\n"
+        f"- NGUYÊN TẮC BÙ TRỪ SẢI CHÂN: Tăng Cadence BẮT BUỘC đi kèm THU NGẮN SẢI CHÂN (bước nhỏ, lướt sát đất).\n"
         f"- BẮT BUỘC luôn cung cấp 2 LỰA CHỌN LINH HOẠT trong Mục 3:\n"
         f"{exercise_options_str}"
     )

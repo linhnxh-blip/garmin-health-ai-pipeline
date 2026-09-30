@@ -438,7 +438,7 @@ def generate_health_analysis(
                     f"===SECTION_BREAK===\n"
                     f"### 🏃‍♂️ 1. Đánh giá Buổi tập Sáng nay & Động học HRM-Pro:\n"
                     f"• **Phân tích Thực tế Buổi tập Sáng:** {sec3_content}\n"
-                    f"• **Động học Chạy bộ HRM-Pro:** Duy trì Cadence 178 - 182 spm để bảo vệ gân Achilles chân trái (GCT Balance 50.3% L). Thực hiện bài tập hạ gót thụ động (Eccentric Heel Drops) nhẹ nhàng trên bậc thềm.\n"
+                    f"• **Động học Chạy bộ HRM-Pro & Bảo vệ Gân Achilles Trái:** Ưu tiên số 1 là Nhịp tim Zone 2 (<136-140 bpm). Khi tăng Cadence (178-182 spm) BẮT BUỘC thu ngắn sải chân (bước nhỏ, lướt sát đất) để không làm tăng vọt nhịp tim. Giai đoạn Tapering sát giải, không gò ép đổi dáng chạy trên đường chạy; tập trung bảo vệ gân Achilles bằng biện pháp ngoài đường chạy (Bài tập hạ gót thụ động Eccentric Heel Drops 3 set x 10-12 lần, Foam Roller giải phóng cơ mông nhỡ và Magie Bisglycinate 300mg).\n"
                     f"• **Hấp thu Tải Tập luyện & ACWR:** Điểm Training Readiness đạt **{tm.get('training_readiness_score') or 'N/A'}/100** | Tổng tải 7 ngày: **{tl.get('total_active_calories', 0)} kcal**.\n\n"
                     f"===SECTION_BREAK===\n"
                     f"### ⚡ 2. Trạng thái Readiness Hiện tại & Chỉ đạo Phục hồi Chiều:\n"
