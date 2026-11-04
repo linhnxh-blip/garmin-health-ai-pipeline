@@ -27,13 +27,16 @@ data/*.txt
 data/*.db
 data/*.sqlite
 data/*.sqlite3
-backups/
+backups/*
+!backups/db_backup.sqlite3
+!backups/allyx_migration_bundle_latest.zip
 data/backups/
 .bot.lock
 *.lock
 
 # 3. Garmin zip export, raw FIT data, meal images & generated reports
 *.zip
+!backups/allyx_migration_bundle_latest.zip
 *.tar.gz
 *.7z
 *.fit

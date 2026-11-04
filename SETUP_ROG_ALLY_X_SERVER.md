@@ -7,6 +7,26 @@ Tài liệu này hướng dẫn chi tiết từng bước từ A đến Z để:
 
 ---
 
+## 🚀 CÁCH NHANH NHẤT KHI LÊN CÔNG TY (CHỈ CẦN GIT CLONE TỪ GITHUB)
+
+Toàn bộ **Hướng dẫn**, **Source Code** và **Gói Database mới nhất (`backups/allyx_migration_bundle_latest.zip` & `backups/db_backup.sqlite3`)** đã được đẩy sẵn lên GitHub! Khi lên công ty, bạn **không cần copy thủ công qua USB hay mạng nội bộ nữa**, chỉ cần mở **PowerShell (Run as Administrator)** trên máy đích và chạy đúng 4 dòng lệnh sau:
+
+```powershell
+# 1. Clone toàn bộ Code + Hướng dẫn + Database từ GitHub về máy
+New-Item -ItemType Directory -Path "C:\Servers" -Force
+cd C:\Servers
+git clone https://github.com/linhnxh-blip/garmin-health-ai-pipeline.git
+cd C:\Servers\garmin-health-ai-pipeline
+
+# 2. Chạy script tự động khôi phục Database từ gói backup có sẵn trong repo + cài đặt Server A-Z
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\setup_server.ps1 -RuntimeMode venv -ServiceManager nssm
+```
+
+> **⚠️ Duy nhất 1 việc cần làm sau khi chạy lệnh trên:** Mở file `.env` (`notepad .env`) để điền `TELEGRAM_BOT_TOKEN` và `GEMINI_API_KEY` của bạn vào (vì GitHub chặn đẩy API Key dạng văn bản rõ để tránh bị khóa key tự động), sau đó khởi động lại dịch vụ là chạy ngay!
+
+---
+
 ## 📋 TỔNG QUAN BỘ FILE KỊCH BẢN ĐÃ ĐƯỢC TẠO SẴN
 
 | Tên File | Vai trò & Chức năng | Chạy ở đâu? |
