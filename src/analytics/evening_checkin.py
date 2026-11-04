@@ -74,8 +74,20 @@ def generate_evening_checkin(
     # Step Goal completion percentage
     step_pct = round((total_steps / step_goal) * 100) if step_goal > 0 else 100
 
-    # Mechanical Load Assessment
-    if is_rest_day and neat_steps > 10000:
+    # Mechanical Load Assessment with POST_RACE_ACUTE Clinical Load Override
+    from src.analytics.periodization import detect_current_phase, TrainingPhase
+    phase = detect_current_phase(date_str)
+    is_post_acute = (phase == TrainingPhase.POST_RACE_ACUTE)
+
+    if is_post_acute and (total_steps > 9000 or has_running_activity):
+        load_assessment = (
+            f"⚠️ **Cảnh báo Quá tải Cơ học Post-Race Acute:** Ghi nhận {total_steps:,} bước chân (kèm vận động) "
+            f"tạo áp lực xung kích dồn ép lớn lên các sợi cơ bắp chuối và gân Achilles chân trái (vốn đang hồi phục "
+            f"vi tổn thương sau sự cố chuột rút Km 26). NGHIÊM CẤM khen ngợi 'vận động tích lũy tốt'. "
+            f"BẮT BUỘC chỉ định: Nằm ngửa gác chân cao vào tường (Legs up the wall) 10-15 phút để hồi lưu máu tĩnh mạch. "
+            f"**CẤT GIÀY VÀO TỦ** nghỉ ngơi hoàn toàn đến hết tuần."
+        )
+    elif is_rest_day and neat_steps > 10000:
         load_assessment = (
             f"⚠️ **Cảnh báo Tải trọng Cơ học:** Hôm nay là ngày Rest Day nhưng vận động thụ động (NEAT) còn cao "
             f"({neat_steps:,} bước). Thân dưới chưa được nghỉ ngơi tuyệt đối, có thể làm chậm quá trình siêu bù đắp "
@@ -101,6 +113,7 @@ def generate_evening_checkin(
 
     tot_cal_logged = sum(int(log.get("total_calories") or 0) for log in nut_logs)
     has_nutrition = len(nut_logs) > 0 and tot_cal_logged >= 100
+    is_incomplete_log = tot_cal_logged < 1300 and has_nutrition
 
     # Build concise single-card Markdown text
     lines = [
@@ -115,7 +128,14 @@ def generate_evening_checkin(
         load_assessment
     ]
 
-    if not has_nutrition:
+    if is_incomplete_log:
+        lines.extend([
+            "",
+            f"🍱 **Đối soát Dinh dưỡng (CẢNH BÁO thiếu log bữa trưa):**",
+            f"⚠️ Tổng nạp ghi nhận {tot_cal_logged} kcal (< 1,300 kcal threshold).",
+            f"📢 *\"Nhật ký dinh dưỡng dường như thiếu bữa trưa. Nếu đã nạp đủ trưa nay, KHÔNG ăn thêm bất kỳ thứ gì sau 18:00 để giữ dạ dày rỗng, bảo vệ HRV đêm và hạ RHR.\"*"
+        ])
+    elif not has_nutrition:
         lines.extend([
             "",
             f"🍱 **Nhắc nhở Dinh dưỡng Cuối ngày (Chưa log):**",
@@ -123,12 +143,20 @@ def generate_evening_checkin(
             f"• Gửi ảnh bữa ăn hoặc gõ `/log_standard` để nạp nhanh ước lượng chuẩn Rest Day (~2,150 kcal / 122g P).",
             f"• Hoặc gõ `/quick_log [mô tả]` (VD: `/quick_log 1 phở bò bắp bữa sáng và 1 cơm tấm bữa trưa`)."
         ])
+    else:
+        lines.extend([
+            "",
+            f"🍱 **Chốt sổ Dinh dưỡng Ngày:** Đã nạp ~{tot_cal_logged} kcal. Giữ khoảng trống tiêu hóa >= 2.0 - 2.5 tiếng trước khi ngủ, kiêng hoàn toàn đồ ăn đêm."
+        ])
 
     lines.extend([
         "",
-        f"💤 **Khuyến nghị Phục hồi Trước giờ ngủ (21:30):**",
-        f"• 💊 **Magie Bisglycinate (300 - 400mg):** Uống lúc 20:30 để thư giãn hệ thần kinh giao cảm, hỗ trợ thả lỏng cơ bắp.",
-        f"• 💧 **Bù nước thông minh:** Ngừng uống nhiều nước sau 20:30 (chỉ nhấp ngụm nhỏ) để tránh gián đoạn giấc ngủ Deep Sleep."
+        f"🩹 **Chăm sóc Da liễu & Gân gót:** Vệ sinh nếp mông/xương cụt khô ráo, chấm Povidone-Iodine 10% | Co bóp thả lỏng gân Achilles trái.",
+        "",
+        f"💤 **Checklist Phục hồi Trước giờ ngủ (21:30):**",
+        f"• 20:30: 💊 Uống 1 viên Magie Bisglycinate (300 - 400mg) + 200ml Nước kiềm Fujiwa ấm.",
+        f"• 21:00: 📱 Digital Detox (Tắt hoàn toàn điện thoại/máy tính, hạ ánh sáng vàng dịu).",
+        f"• 21:30: 🛌 Đi ngủ cố định, duy trì phòng tối và nhiệt độ 22 - 24°C."
     ])
 
     card_markdown = "\n".join(lines)

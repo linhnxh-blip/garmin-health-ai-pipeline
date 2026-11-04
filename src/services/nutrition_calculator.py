@@ -3,7 +3,8 @@ Clinical Nutrition Calculator & Verified Macro Reference Table.
 Implements sports medicine guidelines for endurance athletes with biochemical considerations (e.g., Uric Acid).
 """
 
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, Union
+from src.analytics.constants import OMRON_TARGET_BENCHMARKS
 
 # Verified Nutritional Database per 100g (or standard serving unit)
 VERIFIED_NUTRITION_TABLE = {
@@ -33,92 +34,109 @@ def calculate_calories_from_macros(protein_g: float, carb_g: float, fat_g: float
 
 
 def calculate_daily_macro_targets(
-    weight_kg: float,
+    weight_kg: Optional[Union[float, str]] = 65.3,
     day_type: str = "rest",
     uric_acid_umol_l: Optional[float] = None,
     height_cm: float = 168.0,
     age: int = 44,
-    active_calories_garmin: float = 0.0
+    active_calories_garmin: float = 0.0,
+    days_to_race: Optional[int] = None,
+    days_since_race: Optional[int] = None,
+    target_date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Calculate daily macro and calorie targets based on day type and clinical flags.
-
-    Refactoring Rules:
-    - Calorie-Macro Coherence:
-      total_calories is strictly calculated via calculate_calories_from_macros(P, C, F).
-    - Rest / Recovery Day (~65.6kg):
-      * Protein target: Strictly 1.5 - 1.6 * weight_kg (98g - 105g for ~65.6kg).
-      * Carb target: 3.5 - 4.0 * weight_kg (230g - 260g).
-      * Fat target: 45g - 55g (e.g., 50.0g).
-      * Realistic calorie target dynamically set to ~1,850 - 1,950 kcal derived from (P*4)+(C*4)+(F*9).
-    - Workout Day: Protein target 1.8 - 2.0 * weight_kg (~120 - 130g).
-    - Carbo-Loading Day: Carbs 7.0 - 10.0 * weight_kg (70% total energy).
-
-    Returns:
-        Dict with target_calories, protein_g, carb_g, fat_g, bmr, and clinical_notes.
+    Calculate daily macro and calorie targets based on day type, target date, and clinical flags.
+    Enforces single source of truth for daily targets across reporting and meal logging.
     """
-    w = max(40.0, min(150.0, float(weight_kg)))
+    # Handle case where target_date is passed as first positional argument
+    if isinstance(weight_kg, str) and not target_date:
+        target_date = weight_kg
+        weight_kg = 65.3
+
+    if target_date:
+        from src.analytics.prompt_engine import get_race_context
+        race_ctx = get_race_context(target_date)
+        if days_to_race is None:
+            days_to_race = race_ctx.get("days_to_race")
+        if days_since_race is None:
+            days_since_race = race_ctx.get("days_since_race")
+        phase_str = race_ctx.get("phase", "")
+        if day_type == "rest" and phase_str:
+            if phase_str == "POST_RACE_ACUTE":
+                day_type = "post_race_acute"
+            elif phase_str == "POST_RACE_RECOVERY":
+                day_type = "post_race_recovery"
+            elif phase_str == "TAPERING":
+                day_type = "tapering"
+
+    w_val = 65.3 if weight_kg is None else float(weight_kg)
+    w = max(40.0, min(150.0, w_val))
     bmr = round(10 * w + 6.25 * height_cm - 5 * age + 5)
     
     is_high_uric = (uric_acid_umol_l is not None and uric_acid_umol_l >= 420.0)
+    MAX_DAILY_PROTEIN_HIGH_URIC = 85.0  # Clinical cap for Uric Acid 442 µmol/L in standard training
 
-    d_type = day_type.lower()
-    if d_type in ["rest", "recovery", "active_recovery", "rest day / active recovery day"] or (d_type not in ["workout", "hard workout day", "carbo_loading"] and active_calories_garmin <= 300):
-        # Rest / Recovery Day: 1.5 - 1.6 g/kg protein, 3.5 - 4.0 g/kg carbs, 45-55g fat
-        protein_multiplier = 1.55
-        carb_multiplier = 3.75  # 3.5 - 4.0 g/kg
-        
-        target_p = round(protein_multiplier * w, 1)
-        target_c = round(carb_multiplier * w, 1)
-        target_f = 50.0  # 45g - 55g fat
-        
-        # Calculate exact total calories from macros (P*4 + C*4 + F*9)
-        target_cal = round(calculate_calories_from_macros(target_p, target_c, target_f), 1)
-        
-        notes = (
-            f"Rest/Recovery Day: Target Protein strictly 1.5-1.6g/kg ({target_p}g) "
-            f"to protect kidneys & prevent purine accumulation (Uric Acid = {uric_acid_umol_l or 442} µmol/L). "
-            f"Carbs: 3.5-4.0g/kg ({target_c}g) low GI complex carbs. Fat: {target_f}g. "
-            f"Derived total calories: {target_cal} kcal (mathematically coherent via P*4 + C*4 + F*9)."
-        )
+    from src.analytics.nutrition_engine import calculate_daily_macros
+    from src.analytics.periodization import detect_current_phase, TrainingPhase
 
-    elif "carbo" in d_type:
-        protein_multiplier = 1.55
-        target_p = round(protein_multiplier * w, 1)
-        target_c = round(8.0 * w, 1)  # 7.0 - 10.0g/kg
-        target_f = 40.0
-        target_cal = round(calculate_calories_from_macros(target_p, target_c, target_f), 1)
-        notes = f"Carbo-Loading Day: Carbs ~{target_c}g (70% total calories), Protein: {target_p}g, Fat: {target_f}g. Total: {target_cal} kcal."
+    d_type = (day_type or "").lower()
 
+    if "acute" in d_type or (days_since_race is not None and 1 <= days_since_race <= 7):
+        p_enum = TrainingPhase.POST_RACE_ACUTE
+    elif "post_race" in d_type or "recovery_post" in d_type or (days_since_race is not None and 8 <= days_since_race <= 21):
+        p_enum = TrainingPhase.POST_RACE_RECOVERY
+    elif "carbo" in d_type or "taper" in d_type or (days_to_race is not None and 1 <= days_to_race <= 14):
+        p_enum = TrainingPhase.TAPERING
+    elif "workout" in d_type or active_calories_garmin > 300:
+        p_enum = TrainingPhase.PEAK_TRAINING
     else:
-        # Workout / Active Day
-        protein_multiplier = 1.8 if is_high_uric else 1.9
-        target_p = round(protein_multiplier * w, 1)
-        target_f = round(0.9 * w, 1)
-        target_c = round(max(200.0, (bmr + max(active_calories_garmin, 450.0) + 500 - (target_p * 4 + target_f * 9)) / 4.0), 1)
-        target_cal = round(calculate_calories_from_macros(target_p, target_c, target_f), 1)
-        notes = f"Workout Day: Target Protein: {target_p}g (1.8-1.9g/kg), Carbs: {target_c}g, Fat: {target_f}g. Total: {target_cal} kcal."
+        p_enum = TrainingPhase.MAINTENANCE
+
+    m_res = calculate_daily_macros(
+        weight_kg=w,
+        phase=p_enum,
+        uric_acid_level=uric_acid_umol_l or 442.0,
+        active_calories_garmin=active_calories_garmin,
+        days_since_race=days_since_race,
+        days_to_race=days_to_race,
+        day_type=day_type
+    )
 
     return {
-        "target_calories": target_cal,
-        "protein_g": target_p,
-        "carb_g": target_c,
-        "fat_g": target_f,
+        "target_calories": m_res["target_calories"],
+        "protein_g": m_res["protein_g"],
+        "carb_g": m_res["carb_g"],
+        "fat_g": m_res["fat_g"],
+        "dinner_protein_cap": m_res["dinner_protein_cap"],
         "bmr": bmr,
-        "clinical_notes": notes
+        "clinical_notes": f"Deterministic Engine ({p_enum.value}): Protein {m_res['protein_g']}g, Carb {m_res['carb_g']}g, Fat {m_res['fat_g']}g -> Total Calories {m_res['target_calories']} kcal (Atwater 4-4-9)."
     }
 
 
-def verify_macro_integrity(dishes_description: str, stated_protein_g: float) -> Tuple[bool, float, str]:
+def verify_macro_integrity(
+    dishes_description: str,
+    stated_protein_g: float,
+    stated_carb_g: Optional[float] = None
+) -> Tuple[bool, float, str]:
     """
     Verify whether stated macro numbers for a dish are realistic vs verified nutrition data.
     E.g., 130g raw tofu + 150g rice + veg provides ~10.5g + 4g = ~14.5-17g protein, NOT 36.6g!
+    E.g., 1 bowl of cooked white rice (~130-150g) inherently provides ~35-40g Carbs, NOT 10.7g!
 
     Returns:
         (is_valid, realistic_protein_estimate, suggestion_if_hallucinated)
     """
     desc_lower = dishes_description.lower()
     
+    # Check for white rice carb under-reporting / fabrication (< 25g Carb per bowl)
+    if stated_carb_g is not None and ("cơm" in desc_lower or "rice" in desc_lower) and ("bát" in desc_lower or "chén" in desc_lower or "150g" in desc_lower or "130g" in desc_lower):
+        if stated_carb_g < 25.0:
+            return (
+                False,
+                stated_protein_g,
+                f"Lỗi bịa đặt Carbohydrate: Món cơm trắng ('{dishes_description}') khai báo {stated_carb_g}g Carb là phi sinh học. 1 bát con cơm trắng (130-150g) có ít nhất ~35-41g Carb. Tuyệt đối không hạ khống Carb của cơm để ép khớp quota."
+            )
+
     if "tofu" in desc_lower and "rice" in desc_lower and stated_protein_g > 25.0:
         realistic_p = 17.0
         suggestion = (
@@ -138,28 +156,143 @@ def verify_macro_integrity(dishes_description: str, stated_protein_g: float) -> 
     return True, stated_protein_g, ""
 
 
+def verify_single_dish_integrity(
+    dish_name: str,
+    *args,
+    item_p: float = 0.0,
+    item_c: float = 0.0,
+    item_f: float = 0.0,
+    item_cal: float = 0.0,
+    fat_g: Optional[float] = None,
+    stated_fat_g: Optional[float] = None,
+    stated_protein_g: Optional[float] = None,
+    stated_carb_g: Optional[float] = None,
+    stated_calories: Optional[float] = None,
+    **kwargs
+) -> Tuple[bool, str]:
+    """
+    Assert realistic macronutrient upper bounds and Atwater consistency for individual dishes.
+    - Low-fat dishes (e.g. oil-free chicken breast 70g + soft tofu 100g + boiled vegetables + rice)
+      MUST NOT exceed 10.0g Fat without an explicit fat source (e.g. added olive oil).
+    - Prohibits inflating Fat to match arbitrary calorie goals.
+    - If calories are lacking, clean healthy fats must be explicitly specified
+      (e.g. 'thêm 1 thìa cà phê 5ml dầu olive trộn canh/rau' = 45 kcal / 5g fat).
+    """
+    # Parse parameters flexibly to support positional or keyword invocations
+    if len(args) == 1:
+        f_val = float(args[0])
+        p_val = float(item_p)
+        c_val = float(item_c)
+        cal_val = float(item_cal)
+    elif len(args) == 4:
+        p_val, c_val, f_val, cal_val = float(args[0]), float(args[1]), float(args[2]), float(args[3])
+    else:
+        p_val = float(stated_protein_g if stated_protein_g is not None else item_p)
+        c_val = float(stated_carb_g if stated_carb_g is not None else item_c)
+        cal_val = float(stated_calories if stated_calories is not None else item_cal)
+        if stated_fat_g is not None:
+            f_val = float(stated_fat_g)
+        elif fat_g is not None:
+            f_val = float(fat_g)
+        elif item_f != 0.0:
+            f_val = float(item_f)
+        elif "fat" in kwargs:
+            f_val = float(kwargs["fat"])
+        elif "f" in kwargs:
+            f_val = float(kwargs["f"])
+        elif "stated_fat" in kwargs:
+            f_val = float(kwargs["stated_fat"])
+        else:
+            f_val = float(item_f)
+
+    name_lower = dish_name.lower()
+
+    # 1. Check for boiled / oil-free chicken breast + tofu + boiled veg fat upper bound
+    has_tofu = any(k in name_lower for k in ["đậu phụ", "tofu", "dau phu"])
+    has_chicken = any(k in name_lower for k in ["ức gà", "uc ga", "chicken", "thịt thăn", "thit than"])
+
+    explicit_fat_sources = [
+        "dầu olive", "dau olive", "olive oil", "dầu mè", "dau me", "dầu ăn", "dau an",
+        "dầu thực vật", "dau thuc vat", "dầu hạt", "mỡ", "mo", "thịt ba chỉ", "thịt mỡ",
+        "bơ", "butter", "lạc", "đậu phộng", "dau phong", "hạt điều", "hạnh nhân",
+        "chiên ngập dầu", "rán", "sốt dầu"
+    ]
+    has_explicit_fat = any(src in name_lower for src in explicit_fat_sources)
+
+    # Low-fat chicken breast & tofu dish check (e.g. oil_free_chicken_breast_70g + soft_tofu_100g + boiled_veg)
+    if (has_tofu and has_chicken) or ("chicken_breast" in name_lower and "tofu" in name_lower):
+        if not has_explicit_fat and f_val > 10.0:
+            return (
+                False,
+                f"Lỗi thổi phồng chất béo (Fat Inflation): Món ăn '{dish_name}' khai báo {f_val}g Fat vượt quá trần sinh học 10.0g Fat cho món luộc/áp chảo không dầu. "
+                "100g đậu phụ non (~4.8g Fat) + 70g ức gà không dầu (~2.5g Fat) + canh rau luộc nước trong chỉ chứa tối đa ~6-8g Fat (không vượt quá 10.0g Fat). "
+                "Tuyệt đối cấm tự ý gán thêm mỡ ảo vào món thanh đạm để ép khớp chỉ tiêu Atwater. "
+                "Nếu thiếu năng lượng/Fat, phải bổ sung nguồn chất béo sạch tường minh (ví dụ: 'thêm 1 thìa cà phê 5ml dầu olive trộn canh/rau' = 45 kcal / 5g fat)."
+            )
+
+    # 2. Fruit carb limit check
+    if ("cam" in name_lower or "orange" in name_lower) and float(c_val) > 15.0:
+        return (
+            False,
+            f"Lỗi Carbohydrate cam tươi: Món '{dish_name}' khai báo {c_val}g Carb vượt quá giới hạn hoa quả tươi (< 15g/100g cam tươi = 9.5g C, ~47 kcal). Cần phân bổ Carb còn thiếu vào tinh bột sạch (cơm, yến mạch, bánh mì)."
+        )
+
+    # 3. Rice carb lower bound check
+    if ("cơm" in name_lower or "rice" in name_lower) and any(b in name_lower for b in ["bát", "chén", "bowl", "150g", "130g", "140g"]) and 0.0 < float(c_val) < 25.0:
+        return (
+            False,
+            f"Lỗi Carbohydrate cơm trắng: Món '{dish_name}' khai báo {c_val}g Carb là phi sinh học (hallucination). "
+            "1 bát con cơm trắng (130-150g) chứa ~35-41g Carb. Không được hạ khống Carb của cơm trắng để ép khớp quota."
+        )
+
+    # 4. Atwater mathematical consistency check (if calories provided)
+    if cal_val > 0.0 and (p_val > 0.0 or c_val > 0.0 or f_val > 0.0):
+        calc_cal = (p_val * 4.0) + (c_val * 4.0) + (f_val * 9.0)
+        diff = abs(cal_val - calc_cal)
+        if diff > 5.0:
+            return (
+                False,
+                f"Lỗi Atwater Math: Món '{dish_name}' khai báo {cal_val} kcal nhưng tổng macros ({p_val}g P * 4 + {c_val}g C * 4 + {f_val}g F * 9) tính ra {round(calc_cal, 1)} kcal (lệch {round(diff, 1)} kcal > 5.0 kcal)."
+            )
+
+    return True, "Dish macro and ingredient integrity verified."
+
+
 def verify_dish_atwater_integrity(item_name: str, item_p: float, item_c: float, item_f: float, item_cal: float) -> Tuple[bool, str]:
     """
     Assert that for every individual dish: abs(item_cal - (item_p*4 + item_c*4 + item_f*9)) <= 5.0.
     Disallow inflating a single low-carb fruit (e.g. 100g fresh orange) to > 15g carbs.
+    Disallow deflating cooked rice bowl carbs to < 25g.
+    Disallow inflating Fat in boiled/oil-free dishes to > 10.0g.
     """
-    calc_cal = (float(item_p) * 4.0) + (float(item_c) * 4.0) + (float(item_f) * 9.0)
-    diff = abs(float(item_cal) - calc_cal)
-    
-    name_lower = item_name.lower()
-    if ("cam" in name_lower or "orange" in name_lower) and float(item_c) > 15.0:
-        return (
-            False,
-            f"Lỗi Carbohydrate cam tươi: Món '{item_name}' khai báo {item_c}g Carb vượt quá giới hạn hoa quả tươi (< 15g/100g cam tươi = 9.5g C, ~47 kcal). Cần phân bổ Carb còn thiếu vào tinh bột sạch (cơm, yến mạch, bánh mì)."
-        )
-        
-    if diff > 5.0:
-        return (
-            False,
-            f"Lỗi Atwater Math: Món '{item_name}' khai báo {item_cal} kcal nhưng tổng macros ({item_p}g P * 4 + {item_c}g C * 4 + {item_f}g F * 9) tính ra {round(calc_cal, 1)} kcal (lệch {round(diff, 1)} kcal > 5.0 kcal)."
-        )
+    return verify_single_dish_integrity(
+        dish_name=item_name,
+        item_p=item_p,
+        item_c=item_c,
+        item_f=item_f,
+        item_cal=item_cal
+    )
 
-    return True, "Dish macro Atwater integrity verified."
+
+def validate_dinner_purine_safety(dishes_description: str, uric_acid_umol_l: float = 442.0) -> Tuple[bool, str]:
+    """
+    Enforce low-purine dinner protein selection for athletes with elevated uric acid (>= 420 µmol/L).
+    Nghiêm cấm kê đơn tôm, hải sản, cua, sò, ốc, mực, thịt đỏ cho bữa tối để tránh kết tinh urate ban đêm.
+    """
+    if uric_acid_umol_l < 420.0:
+        return True, "Uric acid mức bình thường."
+
+    desc_lower = dishes_description.lower()
+    high_purine_items = ["tôm", "shrimp", "hải sản", "seafood", "cua", "crab", "sò", "ốc", "mực", "squid", "thịt bò", "beef", "thịt dê"]
+    found_items = [item for item in high_purine_items if item in desc_lower]
+    if found_items:
+        return (
+            False,
+            f"CẢNH BÁO NGUY CƠ ACID URIC BỮA TỐI: Món ăn bữa tối có chứa '{', '.join(found_items)}' - nguồn thực phẩm giàu purin. "
+            f"Với nồng độ Acid Uric {uric_acid_umol_l} µmol/L, bữa tối TUYỆT ĐỐI KHÔNG dùng tôm/hải sản hay thịt đỏ để tránh nguy cơ kết tinh tinh thể Urate khi ngủ. "
+            f"Bắt buộc thay thế bằng đạm thanh đạm ít purin: đậu phụ non, ức gà nạc không da, thịt nạc thăn băm nhỏ hoặc trứng gà luộc."
+        )
+    return True, "Thực đơn bữa tối an toàn cho Acid Uric."
 
 
 def validate_dinner_protein_cap(dinner_protein_g: float, day_type: str = "rest") -> Tuple[bool, str]:
@@ -185,20 +318,16 @@ def validate_menu_protein_cap(
     day_type: str = "rest"
 ) -> Tuple[bool, str]:
     """
-    Validate that total menu protein does not exceed protein target cap on Rest Days.
-    Target cap on Rest Day is 1.55 * weight_kg (+/- 3g tolerance).
-    E.g. For ~65.6kg, max allowable protein is 105.0g. Overruns like 116.4g violate Uric Acid constraints.
+    Validate that total menu protein does not exceed protein target cap (max 85.0g daily for Uric Acid 442 µmol/L).
     """
-    d_type = day_type.lower()
-    if d_type in ["rest", "recovery", "active_recovery", "rest day / active recovery day"]:
-        max_p = round(1.55 * float(weight_kg) + 3.0, 1)
-        if total_protein_g > max_p:
-            return (
-                False,
-                f"CẢNH BÁO VƯỢT TRẦN PROTEIN: Tổng protein thực đơn ({total_protein_g}g) vượt trần khuyến nghị {max_p}g/ngày nghỉ "
-                f"(1.55g/kg bảo vệ thận & Uric Acid 442 µmol/L). Hãy hạ bớt khẩu phần (ví dụ dùng 100g ức gà thay vì 150g)."
-            )
-    return True, "Hàm lượng protein nằm trong giới hạn cho phép."
+    max_p = 85.0
+    if total_protein_g > max_p:
+        return (
+            False,
+            f"CẢNH BÁO VƯỢT TRẦN PROTEIN: Tổng protein thực đơn ({total_protein_g}g) vượt trần 85.0g/ngày "
+            f"(bảo vệ thận & Uric Acid 442 µmol/L). Hãy hạ bớt khẩu phần (ví dụ dùng 100g ức gà/cá/thịt thay vì 150g)."
+        )
+    return True, "Hàm lượng protein nằm trong giới hạn cho phép (<= 85.0g)."
 
 
 

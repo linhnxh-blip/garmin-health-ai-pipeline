@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}}</title>
+    <!-- Tailwind CSS CDN for utility styles -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#172033',
+                            900: '#0f172a',
+                            950: '#090d16'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <style>
+        .type-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .type-nav-btn {
+            text-decoration: none;
+            padding: 9px 18px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.88rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .type-nav-btn.active {
+            background: var(--accent-blue);
+            color: #0f172a;
+            border-color: var(--accent-blue);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.35);
+            font-weight: 700;
+        }
+        .type-nav-btn:hover:not(.active) {
+            background: var(--bg-hover);
+            color: #ffffff;
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+        .metric-label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        .metric-value {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.2;
+        }
+        .metric-sub {
+            font-size: 0.75rem;
+            color: var(--accent-green);
+            margin-top: 4px;
+            font-weight: 500;
+        }
+        .nav-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(30, 41, 59, 0.8);
+            color: var(--accent-blue);
+            padding: 7px 16px;
+            border-radius: 9px;
+            text-decoration: none;
+            border: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+        .nav-back:hover {
+            background: var(--bg-hover);
+            color: #ffffff;
+            border-color: var(--accent-blue);
+            box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
+        }
+        .badge-report-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 14px;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .badge-morning { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.35); }
+        .badge-midday { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+        .badge-evening { background: rgba(167, 139, 250, 0.15); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.35); }
+
+        .section-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px 28px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+            margin-bottom: 20px;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+            color: var(--accent-blue);
+            margin-top: 20px;
+            margin-bottom: 14px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+        .markdown-body h1 {
+            font-size: 1.65rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            color: #ffffff;
+        }
+        .markdown-body h3 {
+            font-size: 1.25rem;
+            color: var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .markdown-body p {
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            line-height: 1.65;
+        }
+        .markdown-body ul, .markdown-body ol {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+        .markdown-body li {
+            margin-bottom: 6px;
+            line-height: 1.6;
+        }
+        .markdown-body strong {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        /* Responsive Table Container & Markdown Table Styles */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 20px 0;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.7);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        }
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+            font-size: 0.88rem;
+            text-align: left;
+        }
+        .markdown-body th {
+            background: rgba(30, 41, 59, 0.95);
+            color: var(--accent-blue);
+            font-weight: 700;
+            padding: 13px 16px;
+            border-bottom: 2px solid var(--border-color);
+            text-transform: uppercase;
+            font-size: 0.76rem;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .markdown-body td {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.45);
+            color: var(--text-primary);
+            line-height: 1.5;
+            vertical-align: middle;
+        }
+        .markdown-body tr:last-child td {
+            border-bottom: none;
+        }
+        .markdown-body tr:hover td {
+            background: rgba(56, 189, 248, 0.04);
+        }
+        .markdown-body blockquote {
+            border-left: 4px solid var(--accent-amber);
+            background: rgba(251, 191, 36, 0.08);
+            padding: 12px 18px;
+            margin: 16px 0;
+            border-radius: 0 10px 10px 0;
+            color: #fde68a;
+        }
+        .markdown-body code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 7px;
+            border-radius: 5px;
+            font-family: ui-monospace, monospace;
+            font-size: 0.88em;
+            color: var(--accent-amber);
+        }
+
+        @media (max-width: 768px) {
+            .section-box {
+                padding: 18px 16px;
+            }
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-[#f8fafc] min-h-screen">
+    <!-- Header -->
+    <header class="border-b border-[#334155] pb-5 mb-6 flex flex-wrap justify-between items-center gap-4">
+        <a href="/" class="logo flex items-center gap-3 text-sky-400 no-underline text-xl font-bold tracking-tight">
+            <span class="logo-icon text-2xl">🏃‍♂️</span>
+            <span class="text-white">Garmin Health AI</span>
+        </a>
+        <a href="/" class="nav-back">← Trở về Dashboard</a>
+    </header>
+
+    <main class="space-y-4 max-w-7xl mx-auto">
+        <!-- Title & Badge Bar -->
+        <div class="flex flex-wrap justify-between items-center gap-3 pb-2 border-b border-slate-800">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-white flex items-center gap-2">
+                    <span>📄</span> Báo cáo Ngày {{DATE_DISPLAY}}
+                </h1>
+                <div class="text-xs text-slate-400 mt-1 font-mono">Target Date: {{DATE}}</div>
+            </div>
+            <span class="badge-report-tag badge-{{REPORT_TYPE}}">{{REPORT_TYPE_UPPER}} REPORT</span>
+        </div>
+
+        <!-- Session Tabs (Morning, Midday, Evening) -->
+        <div class="type-nav">
+            {{TYPE_TABS_HTML}}
+        </div>
+
+        <!-- Physiological Quick Metrics Cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Giấc ngủ (Sleep)</div>
+                <div class="metric-value">{{SLEEP_SCORE}}</div>
+                <div class="metric-sub">Garmin Score</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">HRV Overnight</div>
+                <div class="metric-value">{{HRV_STR}}</div>
+                <div class="metric-sub">{{HRV_STATUS}}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Nhịp tim nghỉ (RHR)</div>
+                <div class="metric-value">{{RHR_STR}}</div>
+                <div class="metric-sub">Phục hồi tim mạch</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Readiness</div>
+                <div class="metric-value">{{READINESS}}</div>
+                <div class="metric-sub">Điểm sẵn sàng</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Cân nặng Omron</div>
+                <div class="metric-value">{{WEIGHT}}</div>
+                <div class="metric-sub">Thể trạng thực tế</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Tổng bước chân</div>
+                <div class="metric-value">{{STEPS_STR}}</div>
+                <div class="metric-sub">Vận động hàng ngày</div>
+            </div>
+        </div>
+
+        <!-- Rendered Report Content -->
+        <div class="report-content-wrapper">
+            {{RENDERED_CONTENT}}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-12 py-6 border-t border-slate-800 text-center text-xs text-slate-500">
+        Garmin Health AI Pipeline &copy; 2026 | Local SQLite Web Dashboard & Intraday Navigation
+    </footer>
+</body>
+</html>

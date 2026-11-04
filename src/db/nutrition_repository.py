@@ -97,14 +97,14 @@ def save_nutrition_log(log_data: Dict[str, Any], db_path: Optional[Path] = None)
         return cursor.lastrowid
 
 def get_nutrition_logs_by_date(date_str: Optional[str] = None, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Retrieve nutrition logs recorded for a given date (YYYY-MM-DD), deduplicating similar meal entries."""
+    """Retrieve nutrition logs recorded for a given date (YYYY-MM-DD), deduplicating similar meal entries and ignoring API fallback error records."""
     target_date = date_str or datetime.now().strftime("%Y-%m-%d")
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date, timestamp, meal_type, dishes, total_calories,
                    protein_g, carb_g, fat_g, alcohol_units, alcohol_description,
-                   sleep_risk_assessment, short_summary, image_path, created_at
+                   sleep_risk_assessment, short_summary, image_path, created_at, raw_ai_response
             FROM nutrition_logs
             WHERE date = ? OR date(timestamp) = ?
             ORDER BY timestamp ASC
@@ -114,6 +114,18 @@ def get_nutrition_logs_by_date(date_str: Optional[str] = None, db_path: Optional
         seen_dishes = set()
         for r in rows:
             d = dict(r)
+            risk = str(d.get("sleep_risk_assessment") or "")
+            raw_err = str(d.get("raw_ai_response") or "")
+            tot_cal = float(d.get("total_calories") or 0)
+            tot_p = float(d.get("protein_g") or 0)
+
+            # Skip fallback error records from Vision API
+            if ("401" in risk or "Unauthenticated" in risk or "Gemini Vision API chưa được xác thực" in risk or "Lỗi kết nối" in risk
+                or "401" in raw_err or "UNAUTHENTICATED" in raw_err):
+                continue
+            if d.get("dishes") and "Bữa ăn chưa phân biệt" in str(d.get("dishes")) and tot_cal == 600 and tot_p == 30:
+                continue
+
             try:
                 d["dishes"] = json.loads(d["dishes"]) if d["dishes"] else []
             except Exception:
@@ -147,14 +159,30 @@ def get_today_nutrition_summary(date_str: Optional[str] = None, db_path: Optiona
     }
 
 def delete_duplicate_nutrition_logs(db_path: Optional[Path] = None) -> int:
-    """Purge duplicate nutrition logs in SQLite database, keeping only the earliest entry per meal/dishes on each date."""
+    """Purge duplicate & invalid Vision API fallback error logs in SQLite database."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
+
+        # 1. Purge Vision API fallback error records
+        cursor.execute(
+            """
+            DELETE FROM nutrition_logs
+            WHERE sleep_risk_assessment LIKE '%401%'
+               OR sleep_risk_assessment LIKE '%Unauthenticated%'
+               OR sleep_risk_assessment LIKE '%Gemini Vision API chưa được xác thực%'
+               OR sleep_risk_assessment LIKE '%Lỗi kết nối Gemini Vision API%'
+               OR raw_ai_response LIKE '%401%'
+               OR raw_ai_response LIKE '%UNAUTHENTICATED%'
+               OR (dishes LIKE '%Bữa ăn chưa phân biệt%' AND total_calories = 600 AND protein_g = 30)
+            """
+        )
+        fallback_deleted = cursor.rowcount
+
+        # 2. Purge duplicates
         cursor.execute("SELECT id, date, dishes, image_path FROM nutrition_logs ORDER BY id ASC")
         rows = cursor.fetchall()
         
         seen_keys = set()
-        deleted_count = 0
         ids_to_delete = []
 
         for r_id, r_date, r_dishes, r_img in rows:
@@ -173,30 +201,60 @@ def delete_duplicate_nutrition_logs(db_path: Optional[Path] = None) -> int:
 
         if ids_to_delete:
             cursor.executemany("DELETE FROM nutrition_logs WHERE id = ?", [(i,) for i in ids_to_delete])
-            conn.commit()
-            deleted_count = len(ids_to_delete)
-            print(f"🧹 Cleaned up {deleted_count} duplicate nutrition logs from database.")
 
-        return deleted_count
+        conn.commit()
+        total_purged = fallback_deleted + len(ids_to_delete)
+        if total_purged > 0:
+            print(f"🧹 Cleaned up {total_purged} duplicate/fallback error nutrition logs from database.")
+
+        return total_purged
 
 
 def get_remaining_nutrition_quota(
+    user_date: Optional[str] = None,
     date_str: Optional[str] = None,
-    weight_kg: float = 65.6,
+    weight_kg: float = 65.3,
     day_type: str = "rest",
     db_path: Optional[Path] = None
 ) -> Dict[str, Any]:
     """Calculate remaining calorie and macro quotas for today using dynamic target source of truth from nutrition_calculator.
     Formula: remaining = target - sum(intraday_logged_macros).
     """
+    from datetime import datetime
     from src.services.nutrition_calculator import calculate_daily_macro_targets
-    summary = get_today_nutrition_summary(date_str, db_path=db_path)
-    targets = calculate_daily_macro_targets(weight_kg=weight_kg, day_type=day_type, uric_acid_umol_l=442.0)
 
-    rem_cal = max(0, int(targets["target_calories"] - summary["total_cal"]))
-    rem_p = round(max(0.0, targets["protein_g"] - summary["total_protein"]), 1)
-    rem_c = round(max(0.0, targets["carb_g"] - summary["total_carbs"]), 1)
-    rem_f = round(max(0.0, targets["fat_g"] - summary["total_fat"]), 1)
+    target_d = user_date or date_str or datetime.now().strftime("%Y-%m-%d")
+    summary = get_today_nutrition_summary(target_d, db_path=db_path)
+
+    eff_weight = weight_kg
+    if eff_weight in (65.3, 65.6):
+        try:
+            from src.db.connection import get_db_connection
+            with get_db_connection(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT weight_kg FROM daily_metrics WHERE date = ?", (target_d,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    eff_weight = float(row[0])
+        except Exception:
+            pass
+
+    targets = calculate_daily_macro_targets(target_date=target_d, weight_kg=eff_weight, day_type=day_type)
+
+    target_cal = targets["target_calories"]
+    target_p = targets["protein_g"]
+    target_c = targets["carb_g"]
+    target_f = targets["fat_g"]
+
+    logged_cal = summary["total_cal"]
+    logged_p = summary["total_protein"]
+    logged_c = summary["total_carbs"]
+    logged_f = summary["total_fat"]
+
+    rem_cal = round(max(0.0, target_cal - logged_cal), 1)
+    rem_p = round(max(0.0, target_p - logged_p), 1)
+    rem_c = round(max(0.0, target_c - logged_c), 1)
+    rem_f = round(max(0.0, target_f - logged_f), 1)
 
     return {
         "target": targets,

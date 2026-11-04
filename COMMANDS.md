@@ -31,6 +31,7 @@ Các lệnh được phân chia thành 2 nhóm chính: **Nhóm Đồng bộ (Syn
 | `analyze` | Chạy AI phân tích sinh lý học từ dữ liệu DB đã có, xuất file journal Markdown. | `python main.py analyze --force --date 2026-09-19` |
 | `bot` | Khởi chạy Telegram Bot listener 24/7 (nhận ảnh bữa ăn, lệnh /report, /sync, /status). | `python main.py bot` |
 | `analyze-image` | Phân tích trực tiếp 1 ảnh bữa ăn cục bộ bằng Gemini Vision và ghi vào DB. | `python main.py analyze-image path/to/meal.jpg --caption "Ăn lúc 13h15"` |
+| `race-pacer` | Kích hoạt bộ nhắc nhở dinh dưỡng & cơ sinh học FM 42km qua Telegram theo thời gian thực (11 mốc). | `python main.py race-pacer --start-time 04:00 --dry-run` |
 | `status` | Kiểm tra tổng số bản ghi và tình trạng cơ sở dữ liệu SQLite. | `python main.py status` |
 | `init` | Khởi tạo bảng dữ liệu SQLite ban đầu. | `python main.py init` |
 

@@ -236,7 +236,7 @@ def test_build_telegram_nutrition_reply(monkeypatch):
     assert "🥤 **NHẬT KÝ THỨC UỐNG & VI CHẤT**" in reply
     assert "✅ **Đánh giá Dinh dưỡng & Phục hồi:**" in reply
     assert "Enzyme Bromelain" in reply
-    assert "📊 **Tiến độ hôm nay:**" in reply
+    assert "📊 TIẾN ĐỘ HÔM NAY" in reply
     assert "cho bữa tối" not in reply
     assert "P:" in reply and "C:" in reply and "F:" in reply
 
@@ -278,5 +278,24 @@ def test_process_command_quick_log(monkeypatch):
     assert res_text["status"] == "success"
     assert res_text.get("record_id") == 998
     assert mock_send.called
+
+
+def test_format_daily_progress():
+    from src.delivery.telegram_bot import format_daily_progress
+    from src.services.nutrition_service import format_daily_progress as format_daily_progress_svc
+
+    logged = {"cal": 2200.0, "p": 120.0, "c": 193.0, "f": 95.8}
+    target = {"cal": 2150.0, "p": 120.0, "c": 241.0, "f": 49.3}
+
+    res = format_daily_progress(logged, target)
+    assert "📊 TIẾN ĐỘ HÔM NAY (ĐÃ NẠP / MỤC TIÊU):" in res
+    assert "Năng lượng: 2200.0/2150.0 kcal (Thừa +50.0 kcal | 102%) ⚠️" in res
+    assert "Protein:    120.0/120.0g (Chuẩn đạt mục tiêu | 100%) ✅" in res
+    assert "Carb:       193.0/241.0g (Còn thiếu 48.0g | 80%)" in res
+    assert "Fat:        95.8/49.3g (Thừa +46.5g | 194%) ⚠️" in res
+
+    # Check that service import matches exactly
+    res_svc = format_daily_progress_svc(logged, target)
+    assert res == res_svc
 
 

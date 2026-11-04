@@ -1,0 +1,45 @@
+# ==============================================================================
+# GARMIN HEALTH AI PIPELINE - DOCKER COMPOSE CHO LOCAL SERVER (ASUS ROG ALLY X)
+# Khởi chạy: docker compose up -d --build
+# ==============================================================================
+version: "3.9"
+
+services:
+  # 1. Web Dashboard & REST API Server (Truy cập qua Tailscale / LAN port 8000)
+  garmin-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: garmin_health_web
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8000
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    command: ["python", "main.py", "web", "--host", "0.0.0.0", "--port", "8000"]
+
+  # 2. Telegram Meal & Interactive Bot Daemon (Chạy ngầm 24/7)
+  garmin-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: garmin_health_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    command: ["python", "main.py", "bot"]
+

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garmin Health AI Dashboard - Compact Data Table</title>
+    <!-- Tailwind CSS CDN for utility compatibility -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#172033',
+                            900: '#0f172a',
+                            950: '#090d16'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="bg-[#0f172a] text-[#f8fafc] min-h-screen">
+    <!-- Top Header -->
+    <header class="border-b border-[#334155] pb-5 mb-6 flex flex-wrap justify-between items-center gap-4">
+        <a href="/" class="logo flex items-center gap-3 text-sky-400 no-underline text-xl font-bold tracking-tight">
+            <span class="logo-icon text-2xl">🏃‍♂️</span>
+            <span class="text-white">Garmin Health AI Dashboard</span>
+        </a>
+        <div class="header-meta flex items-center gap-3 text-sm text-slate-400">
+            <span class="badge-live">Hệ thống Trực tuyến</span>
+            <span class="hidden sm:inline">|</span>
+            <span class="hidden sm:inline">SQLite Intraday Engine</span>
+        </div>
+    </header>
+
+    <main class="space-y-4">
+        <!-- Dashboard Section Title & Description -->
+        <div class="flex flex-wrap justify-between items-end gap-2 mb-2">
+            <div>
+                <h1 class="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2">
+                    <span>📊</span> Bảng Chỉ số & Nhật ký Phục hồi Thể thao
+                </h1>
+                <p class="text-xs md:text-sm text-slate-400 mt-1">
+                    Tổng hợp dữ liệu sinh lý học đêm & truy cập một chạm (One-Click) các phiên báo cáo trong ngày.
+                </p>
+            </div>
+        </div>
+
+        <!-- Filter Controls Bar -->
+        <div class="controls-bar">
+            <div class="filter-group" role="group" aria-label="Bộ lọc thời gian">
+                <button type="button" class="filter-btn active" data-filter="7d" id="btn-filter-7d">7 Ngày gần nhất</button>
+                <button type="button" class="filter-btn" data-filter="30d" id="btn-filter-30d">30 Ngày qua</button>
+                <button type="button" class="filter-btn" data-filter="all" id="btn-filter-all">Tất cả</button>
+            </div>
+            <div class="controls-summary" id="controls-summary">
+                Đang hiển thị <b id="summary-visible-count">0</b> ngày
+            </div>
+        </div>
+
+        <!-- Main Data Table -->
+        <div class="table-container">
+            <table class="data-table" id="reports-table">
+                <thead>
+                    <tr>
+                        <th style="width: 22%;">📅 Ngày & Thứ</th>
+                        <th style="width: 48%;">⚡ Chỉ số Sinh lý (Quick Metrics)</th>
+                        <th style="width: 30%;">🎯 Báo cáo Sẵn sàng (One-Click Actions)</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    <!-- TABLE_ROWS_PLACEHOLDER -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Empty State Container (Hidden by default unless 0 items) -->
+        <div id="empty-state-box" class="empty-state hidden">
+            <div class="text-4xl mb-3">📭</div>
+            <h3>Chưa có dữ liệu báo cáo nào trong khung thời gian này</h3>
+            <p>Hãy chạy lệnh CLI để tạo hoặc phân tích báo cáo tự động:</p>
+            <code>python main.py analyze --type auto</code>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div class="pagination-bar" id="pagination-bar">
+            <div class="pagination-info" id="pagination-info">
+                Trang <b id="current-page-num">1</b> / <span id="total-pages-num">1</span> (<span id="total-items-num">0</span> ngày)
+            </div>
+            <div class="pagination-controls">
+                <button type="button" class="page-btn" id="btn-prev-page" disabled>← Trước</button>
+                <span class="page-indicator font-mono" id="page-display">1</span>
+                <button type="button" class="page-btn" id="btn-next-page">Sau →</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-12 pt-6 border-t border-[#334155] text-center text-xs text-slate-500">
+        Garmin Health AI Pipeline &copy; 2026 | Multi-Sport Clinical Physiologist & Recovery Platform
+    </footer>
+
+    <!-- Interactive Client Script: Instant Filter & Pagination -->
+    <script>
+        (function() {
+            const tableBody = document.getElementById('table-body');
+            const allRows = Array.from(tableBody.querySelectorAll('tr[data-date]'));
+            const emptyStateBox = document.getElementById('empty-state-box');
+            const tableContainer = document.querySelector('.table-container');
+            const paginationBar = document.getElementById('pagination-bar');
+            
+            const btn7d = document.getElementById('btn-filter-7d');
+            const btn30d = document.getElementById('btn-filter-30d');
+            const btnAll = document.getElementById('btn-filter-all');
+            const filterBtns = [btn7d, btn30d, btnAll];
+            
+            const btnPrev = document.getElementById('btn-prev-page');
+            const btnNext = document.getElementById('btn-next-page');
+            const pageDisplay = document.getElementById('page-display');
+            const curPageNum = document.getElementById('current-page-num');
+            const totalPagesNum = document.getElementById('total-pages-num');
+            const totalItemsNum = document.getElementById('total-items-num');
+            const summaryVisibleCount = document.getElementById('summary-visible-count');
+
+            let currentFilter = '7d';
+            let currentPage = 1;
+            const pageSize = 7; // Default 7 items per page to perfectly fit one screen
+
+            function getFilteredRows() {
+                if (currentFilter === '7d') {
+                    return allRows.slice(0, 7);
+                } else if (currentFilter === '30d') {
+                    return allRows.slice(0, 30);
+                } else {
+                    return allRows;
+                }
+            }
+
+            function render() {
+                const filteredRows = getFilteredRows();
+                const totalItems = filteredRows.length;
+                const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+                if (currentPage > totalPages) {
+                    currentPage = totalPages;
+                }
+                if (currentPage < 1) {
+                    currentPage = 1;
+                }
+
+                // Toggle empty state
+                if (totalItems === 0) {
+                    emptyStateBox.classList.remove('hidden');
+                    tableContainer.classList.add('hidden');
+                    paginationBar.classList.add('hidden');
+                    summaryVisibleCount.textContent = '0';
+                    return;
+                } else {
+                    emptyStateBox.classList.add('hidden');
+                    tableContainer.classList.remove('hidden');
+                    paginationBar.classList.remove('hidden');
+                }
+
+                summaryVisibleCount.textContent = totalItems.toString();
+                totalItemsNum.textContent = totalItems.toString();
+                totalPagesNum.textContent = totalPages.toString();
+                curPageNum.textContent = currentPage.toString();
+                pageDisplay.textContent = `${currentPage} / ${totalPages}`;
+
+                btnPrev.disabled = (currentPage <= 1);
+                btnNext.disabled = (currentPage >= totalPages);
+
+                const startIndex = (currentPage - 1) * pageSize;
+                const endIndex = startIndex + pageSize;
+
+                allRows.forEach(row => {
+                    row.style.display = 'none';
+                });
+
+                filteredRows.slice(startIndex, endIndex).forEach(row => {
+                    row.style.display = '';
+                });
+            }
+
+            filterBtns.forEach(btn => {
+                if (!btn) return;
+                btn.addEventListener('click', function() {
+                    filterBtns.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentFilter = this.getAttribute('data-filter');
+                    currentPage = 1;
+                    render();
+                });
+            });
+
+            btnPrev.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    render();
+                }
+            });
+
+            btnNext.addEventListener('click', function() {
+                const totalPages = Math.ceil(getFilteredRows().length / pageSize);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    render();
+                }
+            });
+
+            // Initial render
+            render();
+        })();
+    </script>
+</body>
+</html>

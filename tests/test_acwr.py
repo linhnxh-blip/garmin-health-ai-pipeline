@@ -165,7 +165,7 @@ def test_achilles_tendon_warning_flag_logic(tmp_path):
     assert "CHỈ SỐ Y HỌC THỂ THAO ACWR" in prompt_text
     assert "BẢO VỆ GÂN ACHILLES TRÁI" in prompt_text
     assert "178 - 182 spm" in prompt_text
-    assert "Eccentric Heel Drops" in prompt_text
+    assert "Isometric Holds" in prompt_text
 
 
 def test_hrv_unbalanced_override_prompt_logic(tmp_path):

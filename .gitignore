@@ -1,7 +1,12 @@
-# Environment variables & secrets
+# ==============================================================================
+# GARMIN HEALTH AI PIPELINE - STANDARD GITIGNORE
+# ==============================================================================
+
+# 1. Environment variables, tokens & secrets
 .env
 .env.txt
 .env.local
+.env.*.local
 !.env.example
 credentials.json
 *token*
@@ -9,25 +14,28 @@ data/.telegraph_token
 data/garmin_cookies.txt
 data/*.txt
 
-# Database files & PID locks
+# 2. Database files, dumps, backups & PID locks
 *.db
 *.sqlite
 *.sqlite3
 *.db-shm
 *.db-wal
 *.pid
+*.dump
+*.sql
+*.bak
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+backups/
+data/backups/
 .bot.lock
 *.lock
 
-# Temporary scratch directory
-scratch/
-
-
-# Garmin zip export, raw FIT data & meal images
+# 3. Garmin zip export, raw FIT data, meal images & generated reports
 *.zip
+*.tar.gz
+*.7z
 *.fit
 data/*.zip
 data/*.fit
@@ -37,7 +45,7 @@ data/extracted/
 data/nutrition_images/
 data/reports/*.md
 
-# Python cache & virtual environment
+# 4. Python cache & virtual environments
 __pycache__/
 *.py[cod]
 *$py.class
@@ -46,27 +54,34 @@ venv/
 ENV/
 env/
 
-# Garmin API Session Tokens Cache
+# 5. Node.js / PM2 / Service artifacts
+node_modules/
+.pm2/
+npm-debug.log*
+yarn-debug.log*
+
+# 6. Garmin API Session Tokens Cache
 .garminconnect*
 garmin_tokens/
 .garmin_tokens/
 data/.garmin_tokens/
 
-# IDE / Editor settings
+# 7. IDE / Editor / OS settings
 .vscode/
 .idea/
 *.swp
 *.swo
+.DS_Store
+Thumbs.db
 
-# Medical Records Incoming Directory
+# 8. Temporary scratch & Medical Records Incoming Directory
+scratch/
 data/medical_records/incoming/*
 !data/medical_records/incoming/.gitkeep
 
-# Test & Coverage logs & Server logs
+# 9. Test, Coverage & Server logs
 .pytest_cache/
 .coverage
 htmlcov/
 logs/
 *.log
-
-

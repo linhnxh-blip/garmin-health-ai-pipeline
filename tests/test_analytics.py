@@ -236,3 +236,19 @@ def test_cli_send_report_command(tmp_path: Path):
         assert "delivered to Telegram" in result.output
         mock_send.assert_called_once()
 
+
+def test_cli_analyze_midday_time_window_and_force():
+    runner = CliRunner()
+    with patch("src.analytics.pipeline.validate_report_time_window") as mock_validate, \
+         patch("src.analytics.pipeline.run_health_pipeline") as mock_pipeline:
+        mock_pipeline.return_value = {
+            "model_used": "mock",
+            "prompt_tokens": 0,
+            "completion_tokens": 0
+        }
+
+        result = runner.invoke(cli, ["analyze", "--type", "midday", "--force"])
+        assert result.exit_code == 0
+        mock_validate.assert_called_with("midday", force=True)
+
+

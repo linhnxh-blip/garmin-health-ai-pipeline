@@ -131,3 +131,40 @@ def test_pipeline_dry_run_intraday_snapshot(tmp_path: Path):
     assert "MIDDAY" in raw_prompt
     assert "MORNING BRIEFING SNAPSHOT CONTEXT" in raw_prompt
     assert morning_text in raw_prompt
+
+
+def test_validate_report_time_window(monkeypatch):
+    """Verify time-window guard validation and force bypass."""
+    from src.analytics.pipeline import validate_report_time_window
+    import pytest
+    from datetime import datetime
+
+    # Force bypass should always return True
+    assert validate_report_time_window("morning", force=True) is True
+    assert validate_report_time_window("midday", force=True) is True
+    assert validate_report_time_window("evening", force=True) is True
+
+    # Test midday window: 11 <= hour < 17
+    class MockDateTime16:
+        @classmethod
+        def now(cls):
+            return datetime(2026, 10, 11, 16, 30)
+
+    monkeypatch.setattr("src.analytics.pipeline.datetime", MockDateTime16)
+    # Hour 16:30 is valid for midday now (11 <= 16 < 17)
+    assert validate_report_time_window("midday", force=False) is True
+
+    class MockDateTime17:
+        @classmethod
+        def now(cls):
+            return datetime(2026, 10, 11, 17, 15)
+
+    monkeypatch.setattr("src.analytics.pipeline.datetime", MockDateTime17)
+    # Hour 17:15 is outside midday window, should raise ValueError mentioning 11:00 - 17:00
+    with pytest.raises(ValueError, match="11:00 - 17:00"):
+        validate_report_time_window("midday", force=False)
+
+    # But with force=True, hour 17:15 passes
+    assert validate_report_time_window("midday", force=True) is True
+
+

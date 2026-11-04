@@ -32,6 +32,27 @@ def auto_detect_report_type(hour: Optional[int] = None) -> str:
         return "evening"
 
 
+def validate_report_time_window(report_type: str, force: bool = False) -> bool:
+    """
+    Validate system current hour against strict report time windows.
+    - morning: 04:00 - 11:00
+    - midday: 11:00 - 17:00
+    - evening: >= 20:00 (20:00 - 23:59)
+    If force is True, bypass validation.
+    """
+    if force:
+        return True
+    current_hour = datetime.now().hour
+    r_type = (report_type or "").lower()
+    if r_type == "morning" and not (4 <= current_hour < 11):
+        raise ValueError(f"Không thể tạo Báo cáo Sáng (morning) vào lúc {current_hour}h. Khung giờ cho phép: 04:00 - 11:00.")
+    elif r_type == "midday" and not (11 <= current_hour < 17):
+        raise ValueError(f"Không thể tạo Báo cáo Trưa (midday) vào lúc {current_hour}h. Khung giờ cho phép: 11:00 - 17:00.")
+    elif r_type == "evening" and current_hour < 20:
+        raise ValueError(f"LỖI: Hiện tại mới là {current_hour}h, CHƯA ĐẾN TỐI! Tuyệt đối không được tạo Báo cáo Tối (evening) trước 20:00.")
+    return True
+
+
 def detect_today_morning_activity(
     target_date: str,
     db_path: Optional[Path] = None
@@ -89,12 +110,38 @@ def resolve_day_mode(
     target_date: str,
     morning_workout_done: bool,
     days_to_race: Optional[int] = None,
-    report_type: str = "morning"
+    report_type: str = "morning",
+    days_since_race: Optional[int] = None
 ) -> Tuple[str, str]:
     """
-    Resolve dynamic day_type and Section 3 header title based on morning activity sync and report_type.
+    Resolve dynamic day_type and Section 3 header title based on morning activity sync, report_type, and race phase.
     """
+    from src.analytics.periodization import detect_current_phase, TrainingPhase
+    phase = detect_current_phase(target_date)
     r_type = (report_type or "morning").lower()
+
+    if phase == TrainingPhase.POST_RACE_ACUTE or (days_since_race is not None and 1 <= days_since_race <= 7):
+        day_type = "post_race_acute"
+        d_val = days_since_race if days_since_race is not None else 3
+        if r_type == "midday" or morning_workout_done:
+            section_3_title = f"3. Đánh giá Buổi tập Sáng nay & Kế hoạch Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        elif r_type == "evening":
+            section_3_title = f"3. Tổng kết Tải Vận động & Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        else:
+            section_3_title = f"3. Kê đơn Vận động & Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        return day_type, section_3_title
+
+    if phase == TrainingPhase.POST_RACE_RECOVERY or (days_since_race is not None and 8 <= days_since_race <= 21):
+        day_type = "post_race_recovery"
+        d_val = days_since_race if days_since_race is not None else 8
+        if r_type == "midday" or morning_workout_done:
+            section_3_title = f"3. Đánh giá Buổi tập Sáng nay & Kế hoạch Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        elif r_type == "evening":
+            section_3_title = f"3. Tổng kết Tải Vận động & Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        else:
+            section_3_title = f"3. Kê đơn Vận động & Phục hồi Thể thao (Giai đoạn Hậu Marathon D+{d_val})"
+        return day_type, section_3_title
+
     if r_type == "midday" or morning_workout_done:
         day_type = "taper_active" if (days_to_race is not None and days_to_race <= 14) else "easy_run"
         section_3_title = "3. Đánh giá Buổi tập Sáng nay & Kế hoạch Phục hồi Chiều"
@@ -113,6 +160,8 @@ def run_health_pipeline(
     report_type: str = "auto",
     dry_run: bool = False,
     send_telegram: bool = False,
+    mock: bool = False,
+    force: bool = False,
     db_path: Optional[Path] = None
 ) -> Dict[str, Any]:
     """
@@ -121,6 +170,10 @@ def run_health_pipeline(
     """
     date_str = target_date or datetime.now().strftime("%Y-%m-%d")
     r_type = auto_detect_report_type() if report_type == "auto" else report_type.lower()
+
+    # Enforce time-window validation
+    is_today = (date_str == datetime.now().strftime("%Y-%m-%d"))
+    validate_report_time_window(r_type, force=force or dry_run or mock or (not is_today))
 
     from src.analytics.baseline import calculate_baseline
     from src.analytics.llm_analyst import generate_health_analysis
@@ -137,8 +190,13 @@ def run_health_pipeline(
         if m_rep and m_rep.get("content"):
             baseline_data["morning_report_snapshot"] = m_rep["content"]
 
-    analysis_res = generate_health_analysis(baseline_data, dry_run=dry_run)
+    analysis_res = generate_health_analysis(baseline_data, dry_run=dry_run, mock=mock)
 
+    from src.analytics.prompt_engine import clean_report_text
+    if analysis_res.get("report_markdown"):
+        analysis_res["report_markdown"] = clean_report_text(analysis_res["report_markdown"])
+    if analysis_res.get("telegram_card"):
+        analysis_res["telegram_card"] = clean_report_text(analysis_res["telegram_card"])
 
     if not dry_run:
         save_report_to_db(
@@ -175,6 +233,8 @@ if __name__ == "__main__":
     parser.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today)")
     parser.add_argument("--type", choices=["auto", "morning", "midday", "evening"], default="auto", help="Report type (default: auto)")
     parser.add_argument("--dry-run", action="store_true", help="Print prompt preview without calling API")
+    parser.add_argument("--mock", action="store_true", help="Run in mock mode without invoking LLM API")
+    parser.add_argument("--force", action="store_true", help="Force run / bypass time window validation")
     parser.add_argument("--send-telegram", action="store_true", help="Send report to Telegram")
 
     args = parser.parse_args()
@@ -183,7 +243,9 @@ if __name__ == "__main__":
         target_date=args.date,
         report_type=args.type,
         dry_run=args.dry_run,
-        send_telegram=args.send_telegram
+        send_telegram=args.send_telegram,
+        mock=args.mock,
+        force=args.force
     )
     if args.dry_run:
         print("\n--- DRY RUN PROMPT PREVIEW ---")

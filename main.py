@@ -231,18 +231,26 @@ def status():
 @click.option('--date', default=None, help='Target date in YYYY-MM-DD format (default: today)')
 @click.option('--type', 'report_type', default='auto', type=click.Choice(['auto', 'morning', 'midday', 'evening']), help='Report type (default: auto)')
 @click.option('--dry-run', is_flag=True, help='Print generated prompt without calling LLM API')
+@click.option('--mock', is_flag=True, help='Use mock mode without calling LLM API')
 @click.option('--force', is_flag=True, help='Force re-generation of AI analysis report')
 @click.option('--send-telegram', is_flag=True, help='Send generated report directly to Telegram after analysis')
-def analyze(date, report_type, dry_run, force, send_telegram):
+def analyze(date, report_type, dry_run, mock, force, send_telegram):
     """Run 30-day baseline physiology analysis & LLM report generation for a target date."""
-    from src.analytics.pipeline import run_health_pipeline
+    from src.analytics.pipeline import run_health_pipeline, validate_report_time_window, auto_detect_report_type
     target_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    r_type = auto_detect_report_type() if report_type == "auto" else report_type.lower()
+    is_today = (target_date == datetime.now().strftime("%Y-%m-%d"))
+    validate_report_time_window(r_type, force=force or dry_run or mock or (not is_today))
+
     click.echo(f"🧠 Running Garmin Health AI Analysis ({report_type}) for date: {target_date}...")
 
     res = run_health_pipeline(
         target_date=target_date,
         report_type=report_type,
         dry_run=dry_run,
+        mock=mock,
+        force=force,
         send_telegram=send_telegram
     )
 
@@ -357,7 +365,8 @@ def analyze_image(image_path, caption):
 @cli.command("run-daily")
 @click.option("--date", "target_date", default=None, help="Target date in YYYY-MM-DD format (default: today)")
 @click.option("--type", "report_type", default="auto", type=click.Choice(["auto", "morning", "midday", "evening"]), help="Report type (default: auto)")
-def run_daily(target_date, report_type):
+@click.option("--mock", is_flag=True, help="Use mock mode without calling LLM API")
+def run_daily(target_date, report_type, mock):
     """Execute complete daily pipeline: sync data -> compute baseline & AI report -> send Executive Brief to Telegram."""
     today_str = target_date or datetime.now().strftime("%Y-%m-%d")
     click.echo(f"🚀 Running Daily Garmin Health AI Pipeline ({report_type}) for date: {today_str}...")
@@ -377,6 +386,7 @@ def run_daily(target_date, report_type):
         target_date=today_str,
         report_type=report_type,
         dry_run=False,
+        mock=mock,
         send_telegram=True
     )
     click.echo(f"✅ Daily execution complete for date {today_str} ({report_type})!")
@@ -420,10 +430,15 @@ def send_report(date, chat_id):
 
 @cli.command("evening-checkin")
 @click.option('--date', default=None, help='Target date in YYYY-MM-DD format (default: today)')
+@click.option('--force', is_flag=True, help='Bypass evening time-window guard')
 @click.option('--send-telegram/--no-send-telegram', default=True, help='Dispatch check-in card to Telegram (default: True)')
-def evening_checkin(date, send_telegram):
+def evening_checkin(date, force, send_telegram):
     """Run 21:00 evening check-in: Total steps, mechanical load analysis, pre-bedtime recovery reminders, and dispatch 1 Telegram card."""
+    from src.analytics.pipeline import validate_report_time_window
     target_date = date or datetime.now().strftime("%Y-%m-%d")
+    is_today = (target_date == datetime.now().strftime("%Y-%m-%d"))
+    if is_today:
+        validate_report_time_window("evening", force=force)
     click.echo(f"🌙 Running Evening Check-in for date: {target_date}...")
 
     # 1. Sync live data first to ensure latest step counts
@@ -466,6 +481,17 @@ def web(host, port):
     click.echo(f"📄 View reports at: http://{w_host}:{w_port}/report/YYYY-MM-DD/type")
     click.echo("=" * 60)
     uvicorn.run("src.web.app:app", host=w_host, port=w_port, reload=False)
+
+
+@cli.command("race-pacer")
+@click.option("--start-time", default="04:00", help="Giờ xuất phát race (HH:MM)")
+@click.option("--dry-run", is_flag=True, help="In ra toàn bộ timeline mà không gửi Telegram")
+@click.option("--test-alert", default=None, type=int, help="Gửi thử nghiệm tin nhắn số N ngay lập tức qua Telegram")
+def race_pacer_cmd(start_time, dry_run, test_alert):
+    """Kích hoạt bộ nhắc nhở dinh dưỡng & cơ sinh học FM 42km qua Telegram."""
+    from src.delivery.race_pacer import RaceNutritionPacer
+    pacer = RaceNutritionPacer()
+    pacer.start_pacer(start_time_str=start_time, dry_run=dry_run, test_alert=test_alert)
 
 
 if __name__ == "__main__":

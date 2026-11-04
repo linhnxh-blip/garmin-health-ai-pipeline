@@ -113,12 +113,28 @@ class ACWRCalculator:
             acwr_val = acute_load / chronic_load if chronic_load > 0 else 0.0
 
         # Sports Medicine Zone Classification
+        is_post_race = False
+        try:
+            from src.analytics.periodization import detect_current_phase, TrainingPhase
+            current_phase = detect_current_phase(target_date)
+            if current_phase in (TrainingPhase.POST_RACE_ACUTE, TrainingPhase.POST_RACE_RECOVERY):
+                is_post_race = True
+        except Exception:
+            pass
+
         if acwr_val < 0.3:
             status = "ACUTE_LOAD_VERY_LOW"
-            zone_desc = "Tải cấp tính rất thấp (<0.3). Cần duy trì lực căng thần kinh cơ nhẹ (Chạy Zone 2 + Cadence 178-182 spm) để tránh hiện tượng ì cơ / mỏi giò (stale legs) trước ngày race."
+            if is_post_race:
+                zone_desc = "Tải cấp tính rất thấp (<0.3) sau giải đấu. Cơ thể đang trong pha xả tải hồi phục sâu (Post-Race Recovery)."
+            else:
+                zone_desc = "Tải cấp tính rất thấp (<0.3). Cần duy trì lực căng thần kinh cơ nhẹ (Chạy thả lỏng Zone 2, bước chân tự nhiên) để tránh hiện tượng ì cơ / mỏi giò (stale legs) trước ngày race."
         elif acwr_val < 0.8:
-            status = "TAPERING_DEEP_RECOVERY"
-            zone_desc = "Rất an toàn, cơ bắp phục hồi cao độ cho Race Day"
+            if is_post_race:
+                status = "POST_RACE_RECOVERY"
+                zone_desc = "Rất an toàn, cơ bắp và hệ thần kinh đang phục hồi sâu hậu giải đấu"
+            else:
+                status = "TAPERING_DEEP_RECOVERY"
+                zone_desc = "Rất an toàn, cơ bắp phục hồi cao độ cho Race Day"
         elif 0.8 <= acwr_val <= 1.3:
             status = "SWEET_SPOT_OPTIMAL"
             zone_desc = "Vùng tải tối ưu"

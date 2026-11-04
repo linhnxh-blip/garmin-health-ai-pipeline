@@ -827,10 +827,57 @@ def get_meal_header(analysis: Dict[str, Any]) -> str:
 
 
 def format_sleep_risk(analysis: Dict[str, Any]) -> str:
-    """Format sleep risk / recovery impact section without false warnings."""
+    """Format sleep risk / recovery impact section without false warnings.
+    Purges oatmeal / modern western grains and debounces rapid consecutive meal logs (< 5 min).
+    """
     raw_risk = (analysis.get("sleep_risk_assessment") or "").strip()
     if not raw_risk:
         return ""
+
+    if "Gemini" in raw_risk or "AI Studio" in raw_risk or "Unauthenticated" in raw_risk or "Quota" in raw_risk:
+        return raw_risk
+
+    # 1. Purge modern western grains (oatmeal, quinoa, whole wheat bread)
+    raw_risk = re.sub(r'\b(?:yến mạch|oatmeal)\b', 'khoai lang hấp', raw_risk, flags=re.IGNORECASE)
+    raw_risk = re.sub(r'\bbánh mì nguyên cám\b', 'chuối tiêu chín', raw_risk, flags=re.IGNORECASE)
+    raw_risk = re.sub(r'\bquinoa\b', 'cơm trắng', raw_risk, flags=re.IGNORECASE)
+
+    # 2. Debounce rapid consecutive logs (< 5 minutes from previous meal today)
+    date_str = analysis.get("date") or datetime.now().strftime("%Y-%m-%d")
+    curr_ts = analysis.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        from src.db.nutrition_repository import get_nutrition_logs_by_date
+        logs = get_nutrition_logs_by_date(date_str)
+        prev_log = None
+        if logs:
+            for l in reversed(logs):
+                l_ts = str(l.get("timestamp") or "")
+                if l_ts != curr_ts:
+                    prev_log = l
+                    break
+            if not prev_log and len(logs) >= 2:
+                prev_log = logs[-2]
+
+        if prev_log:
+            prev_ts = str(prev_log.get("timestamp") or "")
+            t_fmt = "%Y-%m-%d %H:%M:%S"
+            c_dt = datetime.strptime(curr_ts, t_fmt) if len(curr_ts) >= 19 else datetime.now()
+            p_dt = datetime.strptime(prev_ts, t_fmt) if len(prev_ts) >= 19 else None
+            if p_dt and 0 <= (c_dt - p_dt).total_seconds() <= 300:
+                # Consecutive log within 5 minutes: strip redundant macro warning paragraphs
+                macro_warning_patterns = [
+                    r'Tuy nhiên,?\s*(?:bữa ăn|tổng lượng Carbohydrate)[^.]*?(?:nên bổ sung|cần bổ sung)[^.]*\.?',
+                    r'Tuy nhiên,?\s*bữa ăn hiện tại đang hoàn toàn thiếu Carbohydrate[^.]*\.?',
+                    r'VĐV nên bổ sung thêm nguồn Carb[^.]*\.?',
+                    r'bạn nên bổ sung thêm nguồn Carb[^.]*\.?'
+                ]
+                for pat in macro_warning_patterns:
+                    raw_risk = re.sub(pat, '', raw_risk, flags=re.IGNORECASE).strip()
+                if not raw_risk or raw_risk in [".", "✅", "⚠️"]:
+                    prev_dish = ", ".join(prev_log.get("dishes") or []) if isinstance(prev_log.get("dishes"), list) else str(prev_log.get("dishes") or "")
+                    raw_risk = f"Thức uống/món ăn bổ sung ngay trong bữa ăn ({prev_dish}), hỗ trợ bù nước và vi chất lành mạnh."
+    except Exception:
+        pass
 
     is_healthy = (
         raw_risk.startswith("✅")
@@ -868,61 +915,63 @@ def format_sleep_risk(analysis: Dict[str, Any]) -> str:
         return f"⚠️ **Cảnh báo Rủi ro Phục hồi:** {clean_text}"
 
 
+def format_daily_progress(logged: dict, target: dict) -> str:
+    # Compute deltas
+    cal_logged = float(logged["cal"] if "cal" in logged else logged.get("total_cal", 0.0))
+    p_logged = float(logged["p"] if "p" in logged else logged.get("total_protein", logged.get("protein_g", 0.0)))
+    c_logged = float(logged["c"] if "c" in logged else logged.get("total_carbs", logged.get("carb_g", 0.0)))
+    f_logged = float(logged["f"] if "f" in logged else logged.get("total_fat", logged.get("fat_g", 0.0)))
+
+    cal_target = float(target["cal"] if "cal" in target else target.get("target_calories", target.get("total_cal", 0.0)))
+    p_target = float(target["p"] if "p" in target else target.get("protein_g", target.get("total_protein", 0.0)))
+    c_target = float(target["c"] if "c" in target else target.get("carb_g", target.get("total_carbs", 0.0)))
+    f_target = float(target["f"] if "f" in target else target.get("fat_g", target.get("total_fat", 0.0)))
+
+    cal_diff = round(cal_logged - cal_target, 1)
+    p_diff = round(p_logged - p_target, 1)
+    c_diff = round(c_logged - c_target, 1)
+    f_diff = round(f_logged - f_target, 1)
+
+    def format_stat(val_logged, val_target, diff, unit="g"):
+        pct = round((val_logged / val_target) * 100, 0) if val_target > 0 else 0
+        if diff > 5:
+            return f"{val_logged:.1f}/{val_target:.1f}{unit} (Thừa +{diff:.1f}{unit} | {pct:.0f}%) ⚠️"
+        elif diff < -5:
+            return f"{val_logged:.1f}/{val_target:.1f}{unit} (Còn thiếu {abs(diff):.1f}{unit} | {pct:.0f}%)"
+        else:
+            return f"{val_logged:.1f}/{val_target:.1f}{unit} (Chuẩn đạt mục tiêu | 100%) ✅"
+
+    return (
+        f"📊 TIẾN ĐỘ HÔM NAY (ĐÃ NẠP / MỤC TIÊU):\n"
+        f"• Năng lượng: {format_stat(cal_logged, cal_target, cal_diff, ' kcal')}\n"
+        f"• Protein:    {format_stat(p_logged, p_target, p_diff)}\n"
+        f"• Carb:       {format_stat(c_logged, c_target, c_diff)}\n"
+        f"• Fat:        {format_stat(f_logged, f_target, f_diff)}"
+    )
+
+
 def calculate_live_progress(date_str: Optional[str] = None, db_path: Optional[Path] = None) -> str:
-    """Calculate total calories and macros logged today and remaining goal for the full day."""
-    from src.db.nutrition_repository import get_today_nutrition_summary
-    from src.analytics.prompt_engine import get_effective_weight_kg
-    from src.db.connection import get_db_connection
+    """Calculate total calories and macros logged today and dynamic comparison vs daily target."""
+    from src.db.nutrition_repository import get_remaining_nutrition_quota
 
-    summary = get_today_nutrition_summary(date_str, db_path=db_path)
-    tot_cal = summary["total_cal"]
-    tot_p = summary["total_protein"]
-    tot_c = summary["total_carbs"]
-    tot_f = summary["total_fat"]
+    target_date = date_str or datetime.now().strftime("%Y-%m-%d")
+    quota = get_remaining_nutrition_quota(user_date=target_date, db_path=db_path)
 
-    weight_kg = 64.2
-    try:
-        with get_db_connection(db_path) as conn:
-            cursor = conn.cursor()
-            target_date = date_str or datetime.now().strftime("%Y-%m-%d")
-            cursor.execute("SELECT weight_kg FROM daily_metrics WHERE date = ?", (target_date,))
-            row = cursor.fetchone()
-            if row and row[0]:
-                weight_kg = float(row[0])
-    except Exception:
-        pass
+    logged = {
+        "cal": quota["logged"]["total_cal"],
+        "p": quota["logged"]["total_protein"],
+        "c": quota["logged"]["total_carbs"],
+        "f": quota["logged"]["total_fat"],
+    }
+    target = {
+        "cal": quota["target"]["target_calories"],
+        "p": quota["target"]["protein_g"],
+        "c": quota["target"]["carb_g"],
+        "f": quota["target"]["fat_g"],
+    }
 
-    eff_w = get_effective_weight_kg({"weight_kg": weight_kg})
-    from src.services.nutrition_calculator import calculate_daily_macro_targets
-    macro_res = calculate_daily_macro_targets(weight_kg=eff_w, day_type="rest", uric_acid_umol_l=442.0)
-    target_cal = macro_res["target_calories"]
-    target_p = macro_res["protein_g"]
-    target_c = macro_res["carb_g"]
-    target_f = macro_res["fat_g"]
+    return format_daily_progress(logged, target)
 
-    rem_cal = max(0, target_cal - tot_cal)
-    rem_p = round(max(0.0, target_p - tot_p), 1)
-    rem_c = round(max(0.0, target_c - tot_c), 1)
-    rem_f = round(max(0.0, target_f - tot_f), 1)
-
-    p_fmt = int(tot_p) if tot_p == int(tot_p) else tot_p
-    c_fmt = int(tot_c) if tot_c == int(tot_c) else tot_c
-    f_fmt = int(tot_f) if tot_f == int(tot_f) else tot_f
-
-    rem_p_fmt = int(rem_p) if rem_p == int(rem_p) else rem_p
-    rem_c_fmt = int(rem_c) if rem_c == int(rem_c) else rem_c
-    rem_f_fmt = int(rem_f) if rem_f == int(rem_f) else rem_f
-
-    if tot_cal < target_cal or tot_p < target_p:
-        return (
-            f"📊 **Tiến độ hôm nay:** Đã nạp {tot_cal:,} kcal | P: {p_fmt}g | C: {c_fmt}g | F: {f_fmt}g\n"
-            f"(Còn lại: {rem_cal:,} kcal, {rem_p_fmt}g Protein, {rem_c_fmt}g Carb, {rem_f_fmt}g Fat cần phân bổ cho các bữa tiếp theo)"
-        )
-    else:
-        return (
-            f"📊 **Tiến độ hôm nay:** Đã nạp {tot_cal:,} kcal | P: {p_fmt}g | C: {c_fmt}g | F: {f_fmt}g\n"
-            f"(Đã hoàn thành 100% mục tiêu năng lượng & macro!)."
-        )
 
 
 def build_telegram_nutrition_reply(analysis: Dict[str, Any]) -> str:

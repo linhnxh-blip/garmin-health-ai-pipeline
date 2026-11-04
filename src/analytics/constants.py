@@ -1,9 +1,9 @@
 """
 Centralized Sports Medicine & Biochemical Constants for Garmin Health AI Pipeline.
-Defines core markers, supplementary markers, and clinical action guidelines (ADA, AHA, EULAR, ACSM).
+Defines core markers, supplementary markers, body composition benchmarks (OMRON VIVA), and clinical action guidelines (ADA, AHA, EULAR, ACSM).
 """
 
-from typing import List, Dict
+from typing import List, Dict, Any
 
 # Core 14 Blood Markers critical for endurance athlete physiology & sports medicine tracking
 CORE_SPORT_MARKERS: List[str] = [
@@ -16,6 +16,31 @@ CORE_SPORT_MARKERS: List[str] = [
 
 # Supplementary markers tracked when present in lab reports
 SUPPLEMENTARY_MARKERS: List[str] = ["IRON", "FERRITIN"]
+
+# Body Composition Target Benchmarks (OMRON VIVA - Male 44y)
+OMRON_TARGET_BENCHMARKS: Dict[str, Any] = {
+    "age": 44,
+    "gender": "male",
+    "weight_target_min_kg": 64.0,
+    "weight_target_max_kg": 65.0,
+    "weight_target_median_kg": 64.5,
+    
+    # Dải mục tiêu cơ thể (Body Composition Goals)
+    "body_fat_pct_target_range": [0.140, 0.165],       # 14.0% - 16.5%
+    "skeletal_muscle_pct_target_range": [0.385, 0.405], # 38.5% - 40.5%
+    "visceral_fat_max_safe": 9,
+    
+    # Tham chiếu chuẩn Omron (Nam 40-59 tuổi)
+    "omron_norms_male_40_59": {
+        "body_fat": {"low": 11.0, "normal_max": 21.9, "high_max": 27.9},
+        "skeletal_muscle": {"low": 33.1, "normal_max": 39.1, "high_max": 43.8}
+    },
+    
+    # Ràng buộc Sinh hóa (Clinical Guardrails)
+    "uric_acid_baseline_umol_l": 442,
+    "max_daily_protein_g_per_kg": 1.35,  # ~84 - 87g Protein/ngày
+    "max_dinner_protein_g": 30.0         # Khóa Protein bữa tối <= 30g
+}
 
 # Action guidelines mapped to clinical standards (ADA, AHA, EULAR, ACSM, EASL)
 SPORTS_MEDICINE_RECOMMENDATIONS: Dict[str, str] = {
