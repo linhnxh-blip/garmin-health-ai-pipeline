@@ -41,11 +41,15 @@ class Settings(BaseSettings):
 
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.6-flash"
-    gemini_vision_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_vision_model: str = "gemini-2.5-flash"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+
+    local_llm_url: str = Field(default="http://localhost:11434")
+    local_llm_model: str = Field(default="qwen2.5:7b")
+    local_vision_model: str = Field(default="qwen3-vl:8b")
 
     google_keep_email: str = ""
     google_keep_app_password: str = ""

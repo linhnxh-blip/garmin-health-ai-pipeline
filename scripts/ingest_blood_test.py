@@ -44,18 +44,18 @@ def extract_markers_from_image(image_path: Path, system_prompt: str) -> List[Dic
 
     from google import genai
     from google.genai import types
+    from src.analytics.vision_analyst import create_genai_client
 
-    client = genai.Client(api_key=api_key)
+    client = create_genai_client(api_key)
     image_part = types.Part.from_bytes(data=img_jpeg_bytes, mime_type="image/jpeg")
 
     candidate_models = [
         "gemini-2.5-flash",
-        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
         getattr(settings, "gemini_vision_model", "gemini-2.5-flash"),
-        "gemini-2.0-flash",
     ]
     seen = set()
-    models_to_try = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+    models_to_try = [m.replace("models/", "").strip() for m in candidate_models if m and not (m in seen or seen.add(m))]
 
     last_err = None
     for model in models_to_try:

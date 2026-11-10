@@ -156,7 +156,9 @@ def test_midday_report_detects_morning_activity(tmp_path):
     assert "Đánh giá Buổi tập Sáng nay & Kế hoạch Phục hồi Chiều" in prompt
     assert "TUYỆT ĐỐI KHÔNG kê đơn bất kỳ bài chạy bộ nào mới cho buổi chiều" in prompt
 
-    res = generate_health_analysis(baseline_data, dry_run=False)
+    from unittest.mock import patch
+    with patch('src.analytics.llm_analyst.call_gemini', return_value={'report_markdown': 'Đánh giá Buổi tập Sáng nay: phục hồi kéo giãn thả lỏng chiều', 'model_used': 'mock', 'prompt_tokens': 0, 'completion_tokens': 0}):
+        res = generate_health_analysis(baseline_data, dry_run=False)
     assert "Đánh giá Buổi tập Sáng nay" in res["report_markdown"]
     assert any(kw in res["report_markdown"].lower() for kw in ["nghiêm cấm", "stretching", "thả lỏng", "phục hồi", "chiều"])
 

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from config.settings import settings
 from src.delivery.telegram_bot import (
+    TelegramMealBot,
     split_message_chunks,
     send_telegram_report,
     convert_markdown_to_telegram_html,
@@ -297,5 +298,190 @@ def test_format_daily_progress():
     # Check that service import matches exactly
     res_svc = format_daily_progress_svc(logged, target)
     assert res == res_svc
+
+
+def test_process_photo_message_no_caption_error(monkeypatch, tmp_path):
+    from src.delivery.telegram_bot import TelegramMealBot
+
+    bot = TelegramMealBot(bot_token="fake_bot_token")
+    mock_send = MagicMock()
+    mock_save = MagicMock()
+    monkeypatch.setattr(bot, "send_message", mock_send)
+    monkeypatch.setattr("src.delivery.telegram_bot.save_nutrition_log", mock_save)
+
+    # Mock download file bytes (img_bytes, ext)
+    monkeypatch.setattr(bot, "get_file_bytes", lambda fid, destination_path=None: (b"fake_jpeg", ".jpg"))
+
+    # Mock analyze_meal_image to return error when vision fails without caption
+    monkeypatch.setattr("src.delivery.telegram_bot.analyze_meal_image", lambda **kwargs: {
+        "status": "error",
+        "error_code": "vision_failed_no_caption",
+        "error_message": "Không thể phân tích ảnh do lỗi kết nối AI Vision. Vui lòng gõ tên món ăn hoặc gửi kèm chú thích."
+    })
+
+    msg = {
+        "message_id": 13,
+        "chat": {"id": 12345},
+        "photo": [{"file_id": "file_123"}]
+    }
+    res = bot.process_photo_message(msg)
+
+    assert res["status"] == "error"
+    assert res["reason"] == "vision_failed_no_caption"
+    # Verify save_nutrition_log was NOT called (no fake 600 kcal saved)
+    assert not mock_save.called
+    # Verify error message sent to user
+    assert mock_send.called
+    args = mock_send.call_args[0]
+    assert "Không thể phân tích ảnh do lỗi kết nối AI Vision" in args[1]
+
+
+def test_process_photo_message_with_caption_fallback(monkeypatch):
+    from src.delivery.telegram_bot import TelegramMealBot
+
+    bot = TelegramMealBot(bot_token="fake_bot_token")
+    mock_send = MagicMock()
+    mock_save = MagicMock(return_value=1001)
+    monkeypatch.setattr(bot, "send_message", mock_send)
+    monkeypatch.setattr("src.delivery.telegram_bot.save_nutrition_log", mock_save)
+
+    monkeypatch.setattr(bot, "get_file_bytes", lambda fid, destination_path=None: (b"fake_jpeg", ".jpg"))
+
+    # Mock analyze_meal_image to return text-cascade fallback when caption provided
+    monkeypatch.setattr("src.delivery.telegram_bot.analyze_meal_image", lambda **kwargs: {
+        "date": "2026-11-10",
+        "timestamp": "2026-11-10 12:00:00",
+        "meal_type": "Bữa chính",
+        "dishes": ["Cơm sườn bì chả"],
+        "total_calories": 720,
+        "protein_g": 38.0,
+        "carb_g": 75.0,
+        "fat_g": 24.0,
+        "alcohol_units": 0.0,
+        "short_summary": "Đã ghi nhận: Cơm sườn bì chả (~720 kcal | P: 38g | C: 75g | F: 24g).",
+        "fallback_notice": "⚠️ [Vision Cloud lỗi - Đã phân tích tự động từ chú thích bằng Local AI / Text LLM]",
+        "is_caption_fallback": True
+    })
+
+    msg = {
+        "message_id": 14,
+        "chat": {"id": 12345},
+        "caption": "cơm sườn bì chả",
+        "photo": [{"file_id": "file_456"}]
+    }
+    res = bot.process_photo_message(msg)
+
+    assert res["status"] == "success"
+    assert res["record_id"] == 1001
+    assert mock_save.called
+    saved_analysis = mock_save.call_args[0][0]
+    assert saved_analysis["total_calories"] == 720
+    assert saved_analysis["protein_g"] == 38.0
+    assert mock_send.called
+    reply_sent = mock_send.call_args[0][1]
+    assert "Vision Cloud lỗi" in reply_sent
+    assert "Cơm sườn bì chả" in reply_sent
+
+
+def test_process_command_retry_last(monkeypatch, tmp_path):
+    import sqlite3
+    db_file = tmp_path / "test_retry.db"
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE nutrition_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            timestamp DATETIME,
+            meal_type TEXT,
+            dishes TEXT,
+            total_calories INTEGER,
+            protein_g REAL,
+            carb_g REAL,
+            fat_g REAL,
+            alcohol_units REAL,
+            alcohol_description TEXT,
+            sleep_risk_assessment TEXT,
+            short_summary TEXT,
+            image_path TEXT,
+            raw_ai_response TEXT,
+            created_at DATETIME
+        )
+    """)
+    # Insert a record that had default 600 kcal
+    c.execute("""
+        INSERT INTO nutrition_logs (
+            id, date, timestamp, meal_type, dishes, total_calories,
+            protein_g, carb_g, fat_g, alcohol_units, alcohol_description,
+            sleep_risk_assessment, short_summary, image_path, raw_ai_response
+        ) VALUES (
+            201, '2026-11-10', '2026-11-10 12:00:00', 'Bữa chính',
+            '["bún bò Huế"]', 600, 30.0, 50.0, 20.0, 0.0, 'Không có cồn',
+            '⚠️ Tạm thời không thể kết nối AI Vision.', 'Đã ghi nhận mặc định',
+            '', '503 UNAVAILABLE'
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    from contextlib import contextmanager
+    @contextmanager
+    def fake_db_conn(db_path=None):
+        cn = sqlite3.connect(db_file)
+        cn.row_factory = sqlite3.Row
+        try:
+            yield cn
+        finally:
+            cn.close()
+
+    monkeypatch.setattr("src.db.connection.get_db_connection", fake_db_conn)
+
+    # Mock analyze_quick_log_text
+    monkeypatch.setattr("src.analytics.vision_analyst.analyze_quick_log_text", lambda text, **kw: {
+        "date": "2026-11-10",
+        "timestamp": "2026-11-10 12:00:00",
+        "meal_type": "Bữa chính",
+        "dishes": ["bún bò Huế"],
+        "total_calories": 650,
+        "protein_g": 38.0,
+        "carb_g": 70.0,
+        "fat_g": 22.0,
+        "alcohol_units": 0.0,
+        "alcohol_description": "Không có cồn",
+        "sleep_risk_assessment": "✅ Đầy đủ đạm và tinh bột phục hồi cơ bắp.",
+        "short_summary": "Đã ghi nhận: bún bò Huế (~650 kcal | P: 38g | C: 70g | F: 22g)."
+    })
+
+    bot = TelegramMealBot(bot_token="fake_token")
+    mock_send = MagicMock()
+    monkeypatch.setattr(bot, "send_message", mock_send)
+
+    msg = {
+        "message_id": 50,
+        "chat": {"id": 123456},
+        "text": "/retry_last"
+    }
+    res = bot.process_command_message(msg)
+
+    assert res["status"] == "success"
+    assert res["command"] == "/retry_last"
+    assert res["record_id"] == 201
+
+    # Verify updated record in DB
+    verify_conn = sqlite3.connect(db_file)
+    verify_conn.row_factory = sqlite3.Row
+    vc = verify_conn.cursor()
+    vc.execute("SELECT * FROM nutrition_logs WHERE id = 201")
+    updated_rec = dict(vc.fetchone())
+    verify_conn.close()
+
+    assert updated_rec["total_calories"] == 650
+    assert updated_rec["protein_g"] == 38.0
+    assert updated_rec["carb_g"] == 70.0
+    assert updated_rec["fat_g"] == 22.0
+    assert mock_send.call_count >= 1
+
+
+
 
 

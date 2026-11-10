@@ -170,20 +170,19 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
 
     # Candidate models in order of priority & quota availability
     default_candidates = [
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-3.7-flash",
+        "gemini-2.5-flash",
         "gemini-3.8-flash",
     ]
     env_model = (settings.gemini_model or "").strip()
     raw_candidates = ([env_model] if env_model else []) + default_candidates
     seen = set()
-    models_to_try = [m for m in raw_candidates if m and not (m in seen or seen.add(m))]
+    models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
     from google import genai
     from google.genai import types
+    from src.analytics.vision_analyst import create_genai_client
 
-    client = genai.Client(api_key=api_key)
+    client = create_genai_client(api_key)
     
     last_err = None
     for model in models_to_try:
@@ -628,8 +627,8 @@ def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = F
             f"### 💤 2. Bóc tách Cấu trúc Giấc ngủ & Tái tạo Sinh học:\n"
             f"- **Phân bổ Các Giai đoạn Giấc ngủ (Sleep Architecture):** Điểm số giấc ngủ đạt **{sleep_score}/100** (Tổng thời gian ngủ: {tot_sleep_str}). Chi tiết từng giai đoạn: Ngủ sâu (Deep Sleep): **{deep_str}** ({deep_pct}%) | Ngủ mơ (REM Sleep): **{rem_str}** ({rem_pct}%) | Ngủ nông (Light Sleep): **{_format_seconds(light_sec)}** ({light_pct}%) | Thức giấc (Awake): **{_format_seconds(awake_sec)}** ({awake_pct}% trên Total Bed Time).\n"
             f"- **Hiệu suất Sạc Body Battery & Trí nhớ Động (Adaptive Memory):** Điểm sạc Body Battery đêm qua đạt **+{bb_charged} điểm** (Cao nhất: {tm.get('body_battery_highest') or 'N/A'}, Thấp nhất: {tm.get('body_battery_lowest') or 'N/A'}). Theo quy luật Trí nhớ Động cá nhân, mỗi 15 phút Ngủ sâu Deep Sleep đóng góp trung bình +2.5 đến +3.2 điểm Body Battery.\n"
-            f"{(f'- **Đánh giá Nén sóng chậm (Deep Sleep Rebound do thiếu ngủ):** Mặc dù thời lượng Deep Sleep đạt {deep_str}, cơ thể phải nén sóng não chậm (Deep Sleep Rebound) để cấp cứu tổn thương tế bào do thời gian ngủ bị cắt ngắn nghiêm trọng (< 5 tiếng). Tuyệt đối không nhầm lẫn đây là trạng thái Siêu phục hồi (Supercompensation).\\n' if is_sleep_deprived else '')}"
-            f"{nut_correlation_text}\n\n"
+            + (f"- **Đánh giá Nén sóng chậm (Deep Sleep Rebound do thiếu ngủ):** Mặc dù thời lượng Deep Sleep đạt {deep_str}, cơ thể phải nén sóng não chậm (Deep Sleep Rebound) để cấp cứu tổn thương tế bào do thời gian ngủ bị cắt ngắn nghiêm trọng (< 5 tiếng). Tuyệt đối không nhầm lẫn đây là trạng thái Siêu phục hồi (Supercompensation).\n" if is_sleep_deprived else "")
+            +             f"{nut_correlation_text}\n\n"
             f"===SECTION_BREAK===\n"
             f"{sec3_header}\n"
             f"{race_countdown_str}\n"
@@ -645,8 +644,8 @@ def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = F
             f"  + **Bữa phụ chiều (15:30):** {menu_snack}\n"
             f"  + **Bữa tối (Hoàn tất 2.5 - 3.0 tiếng trước khi đi ngủ):** {menu_dinner}\n"
             f"  + **Bổ sung Vi chất & Nước khoáng (20:30 - 21:00):** 1 viên Magie Bisglycinate (400mg) giúp thư giãn thần kinh + Bù đủ 3.0L Nước khoáng kiềm Fujiwa rải đều trong ngày.\n"
-            f"{(f'  + **Giao thức Thải trừ Acid Uric Hậu Cồn (Alkaline Hydration Protocol):** Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles.\\n' if total_alc > 0 else '')}"
-            f"- **💬 Thăm khám Thực tế Đầu ngày:** Bạn hãy kiểm tra nhanh tình trạng nốt viêm xương cụt (đã se miệng khô ráo chưa) và bắp chuối trái xem có còn cảm giác căng cứng khi bước lên cầu thang sáng nay hay không nhé.\n"
+            + ("  + **Giao thức Thải trừ Acid Uric Hậu Cồn (Alkaline Hydration Protocol):** Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles.\n" if total_alc > 0 else "")
+            +             f"- **💬 Thăm khám Thực tế Đầu ngày:** Bạn hãy kiểm tra nhanh tình trạng nốt viêm xương cụt (đã se miệng khô ráo chưa) và bắp chuối trái xem có còn cảm giác căng cứng khi bước lên cầu thang sáng nay hay không nhé.\n"
             f"- 💡 Lưu ý: Đây là thực đơn khung ngày nghỉ/hồi phục nền tảng. Mọi tiêu hao từ bài chạy/bơi phát sinh hôm nay sẽ được tự động cộng bù hạn mức trong Thẻ Nhịp Trưa (Midday Pulse).\n"
         )
     offline_report = clean_report_text(offline_report)

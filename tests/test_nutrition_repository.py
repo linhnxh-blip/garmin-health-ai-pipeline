@@ -84,3 +84,78 @@ def test_get_today_nutrition_summary(tmp_path):
     assert summary["total_carbs"] == 116.0
     assert summary["total_fat"] == 31.0
 
+
+def test_reparse_uncalculated_meal_logs(tmp_path, monkeypatch):
+    from src.db.nutrition_repository import reparse_uncalculated_meal_logs
+    from src.db.connection import get_db_connection
+
+    db_file = tmp_path / "test_reparse.db"
+    init_db(db_file)
+
+    # Insert log with 0 calories and 0 protein
+    with get_db_connection(db_file) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO nutrition_logs (date, timestamp, meal_type, dishes, total_calories, protein_g, carb_g, fat_g)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-11-10", "2026-11-10 08:30:00", "Bữa sáng", '["1 phở bò bắp"]', 0, 0.0, 0.0, 0.0)
+        )
+        # Insert normal already-calculated log
+        cursor.execute(
+            """
+            INSERT INTO nutrition_logs (date, timestamp, meal_type, dishes, total_calories, protein_g, carb_g, fat_g)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("2026-11-10", "2026-11-10 12:30:00", "Bữa trưa", '["Cơm sườn"]', 600, 35.0, 70.0, 20.0)
+        )
+        conn.commit()
+
+    # Mock analyze_quick_log_text
+    def fake_analyze(text, timestamp=None):
+        return {
+            "meal_type": "Bữa sáng",
+            "dishes": [text],
+            "total_calories": 530,
+            "protein_g": 36.0,
+            "carb_g": 58.0,
+            "fat_g": 14.0,
+            "short_summary": f"Đã ghi nhận: {text} (~530 kcal)",
+            "sleep_risk_assessment": "✅ Đánh giá phục hồi tốt."
+        }
+
+    monkeypatch.setattr("src.analytics.vision_analyst.analyze_quick_log_text", fake_analyze)
+
+    # 1. Test Dry Run
+    res_dry = reparse_uncalculated_meal_logs(db_path=db_file, dry_run=True)
+    assert res_dry["total_found"] == 1
+    assert res_dry["records"][0]["new"]["calories"] == 530
+
+    # Verify not yet changed in DB
+    with get_db_connection(db_file) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT total_calories, protein_g FROM nutrition_logs WHERE id = 1")
+        row = cursor.fetchone()
+        assert row[0] == 0
+
+    # 2. Test Real Reparse & Update
+    res_real = reparse_uncalculated_meal_logs(db_path=db_file, dry_run=False)
+    assert res_real["updated_count"] == 1
+
+    # Verify updated in DB
+    with get_db_connection(db_file) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT total_calories, protein_g, carb_g, fat_g FROM nutrition_logs WHERE id = 1")
+        row = cursor.fetchone()
+        assert row[0] == 530
+        assert row[1] == 36.0
+        assert row[2] == 58.0
+        assert row[3] == 14.0
+
+        # Normal log remains unchanged
+        cursor.execute("SELECT total_calories, protein_g FROM nutrition_logs WHERE id = 2")
+        row2 = cursor.fetchone()
+        assert row2[0] == 600
+        assert row2[1] == 35.0
+

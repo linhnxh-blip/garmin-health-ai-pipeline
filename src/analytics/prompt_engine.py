@@ -1932,8 +1932,8 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
             f"     * Bữa trưa: 'Thêm 1 thìa cà phê (5ml) dầu mè hoặc dầu olive trộn vào canh/rau luộc' (+5g Fat).\n"
             f"     * Bữa tối: 'Thêm 1 thìa cà phê (5ml) dầu mè hoặc dầu olive trộn vào canh/rau luộc' (+5g Fat).\n"
             f"   - Đảm bảo Sum(Dish Fat) khớp với Daily Target Fat ({target_f}g) trong dung sai ±3g.\n"
-            f"{('9. ⚠️ GIAO THỨC ĐÀO THẢI ACID URIC HẬU CỒN: Do đêm qua có cồn, BẮT BUỘC trong Mục 4 quy định rõ ràng giao thức bù nước kiềm: \"Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles.\"\n' if tot_alc_prev > 0 else '')}"
-            f"{rule_10_text}\n"
+            + ('9. ⚠️ GIAO THỨC ĐÀO THẢI ACID URIC HẬU CỒN: Do đêm qua có cồn, BẮT BUỘC trong Mục 4 quy định rõ ràng giao thức bù nước kiềm: "Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles."\n' if tot_alc_prev > 0 else "")
+            +             f"{rule_10_text}\n"
         )
     else:
         din_p_cap = round(min(macro_dict.get("dinner_protein_cap", 28.0 if is_post_race_cur else 30.0), target_p), 1)
@@ -1978,8 +1978,8 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
             f"  * Bữa trưa: 'Thêm 1 thìa cà phê (5ml) dầu mè hoặc dầu olive trộn vào canh/rau luộc' (+5g Fat).\n"
             f"  * Bữa tối: 'Thêm 1 thìa cà phê (5ml) dầu mè hoặc dầu olive trộn vào canh/rau luộc' (+5g Fat).\n"
             f"- Đảm bảo Sum(Dish Fat) khớp với Daily Target Fat ({target_f}g) trong dung sai ±3g.\n"
-            f"{('⚠️ GIAO THỨC ĐÀO THẢI ACID URIC HẬU CỒN: Do đêm qua có cồn, BẮT BUỘC trong Mục 4 quy định rõ ràng giao thức bù nước kiềm: \"Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles.\"\n' if tot_alc_prev > 0 else '')}"
-            f"{empty_log_footer_rule}"
+            + ('9. ⚠️ GIAO THỨC ĐÀO THẢI ACID URIC HẬU CỒN: Do đêm qua có cồn, BẮT BUỘC trong Mục 4 quy định rõ ràng giao thức bù nước kiềm: "Uống tối thiểu 3.0L - 3.2L nước rải đều trong ngày, ưu tiên nước khoáng kiềm pH 8.5-9.0 (Fujiwa) để nâng pH nước tiểu, chống lắng đọng tinh thể urat tại gân Achilles."\n' if tot_alc_prev > 0 else "")
+            +             f"{empty_log_footer_rule}"
             f"⚠️ BẢO ĐẢM TÍNH TOÁN CỘNG TRỪ MACRO CHÍNH XÁC: Tổng Calo và Protein từ các món gợi ý BẮT BUỘC phải khớp chính xác với mục tiêu ~{target_cal} kcal và ~{target_p}g Protein.\n"
             f"⚠️ TÍNH KHẢ THI BỮA TỐI: Khi gợi ý các bữa ăn có thời gian chế biến/dùng bữa kéo dài (như Lẩu hoặc tiệc tối gia đình): BẮT BUỘC bổ sung lưu ý thực tế: 'Nếu chọn ăn lẩu hoặc ăn ngoài, nên thu xếp hoàn tất bữa ăn trước giờ đi ngủ 2.5 - 3.0 tiếng, đảm bảo hệ tiêu hóa có đủ thời gian hoàn tất chu trình trước giờ ngủ.'"
         )

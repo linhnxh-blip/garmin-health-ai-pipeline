@@ -1,6 +1,8 @@
 import json
 import io
 import time
+import base64
+import asyncio
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
 from datetime import datetime
@@ -62,6 +64,52 @@ Nhiệm vụ của bạn là nhận diện và phân tích toàn diện ảnh ch
 }
 """
 
+VISION_MODELS = [
+    "gemini-2.5-flash",  # Tuyến 1: Chính thức Cloud (tốc độ nhanh nhất, tối ưu chi phí)
+    "gemini-3.8-flash",  # Dự phòng Cloud
+]
+
+
+def create_genai_client(api_key: str):
+    """Khởi tạo Google GenAI Client với custom httpx.Client và timeout tường minh,
+    khắc phục triệt để lỗi SSL Handshake Operation Timed Out khi kết nối Google Cloud.
+    """
+    import httpx
+    try:
+        import certifi
+        verify_ca = certifi.where()
+    except Exception:
+        verify_ca = True
+
+    try:
+        from google import genai
+        from google.genai import types
+        custom_http_client = httpx.Client(
+            timeout=httpx.Timeout(
+                connect=20.0,
+                read=30.0,
+                write=20.0,
+                pool=10.0
+            ),
+            verify=verify_ca,
+            follow_redirects=True
+        )
+        http_opts = types.HttpOptions(
+            httpx_client=custom_http_client,
+            timeout=30000
+        )
+        return genai.Client(api_key=api_key, http_options=http_opts)
+    except Exception as init_err:
+        from google import genai
+        return genai.Client(api_key=api_key)
+
+
+
+def call_ai_with_cascade(prompt: str, json_format: bool = True) -> Dict[str, Any]:
+    """Cascade text LLM analysis: Gemini Flash (2.5 -> 3.8) -> OpenAI -> Local Ollama (qwen2.5:7b)."""
+    return analyze_quick_log_text(prompt)
+
+
 def analyze_meal_image_openai(img_bytes: bytes, user_text: str) -> Optional[str]:
     """Fallback helper to analyze image using OpenAI Vision API (gpt-4o-mini)."""
     import base64
@@ -97,6 +145,284 @@ def analyze_meal_image_openai(img_bytes: bytes, user_text: str) -> Optional[str]
     except Exception as err:
         print(f"⚠️ OpenAI Vision fallback exception: {err}")
     return None
+
+
+def analyze_quick_log_text_openai(user_text: str) -> Optional[str]:
+    """Fallback helper to analyze quick log text using OpenAI Chat Completion API."""
+    import requests
+    import os
+    openai_key = getattr(settings, "openai_api_key", None) or os.getenv("OPENAI_API_KEY", "")
+    if not openai_key or "YourActual" in openai_key:
+        return None
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {openai_key}"
+        }
+        payload = {
+            "model": getattr(settings, "openai_model", None) or "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": VISION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_text}
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2
+        }
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            res_data = res.json()
+            return res_data["choices"][0]["message"]["content"]
+    except Exception as err:
+        print(f"⚠️ OpenAI Quick Log text fallback exception: {err}")
+    return None
+
+
+def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
+    """Fallback helper to analyze meal text using Local Ollama LLM (e.g. qwen2.5:7b on ROG Ally X)."""
+    import requests
+    import os
+    import json
+
+    base_url = (getattr(settings, "local_llm_url", None) or os.getenv("LOCAL_LLM_URL") or "http://localhost:11434").rstrip("/")
+    model_name = (getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b").strip()
+
+    prompt = (
+        f"Bạn là chuyên gia dinh dưỡng thể thao. Hãy phân tích bữa ăn sau: \"{meal_text}\".\n"
+        "BẮT BUỘC trả về duy nhất 1 chuỗi JSON thuần túy (không markdown, không bọc ```json) theo đúng cấu trúc schema sau:\n"
+        "{\n"
+        "  \"calories\": <số thực calo>,\n"
+        "  \"protein\": <số thực gram protein>,\n"
+        "  \"carb\": <số thực gram carb>,\n"
+        "  \"fat\": <số thực gram fat>,\n"
+        "  \"alcohol_grams\": 0.0,\n"
+        "  \"summary\": \"<tóm tắt ngắn gọn món ăn>\",\n"
+        "  \"recovery_impact\": \"<đánh giá phục hồi thể thao, tải purine/axit uric, gân gót và bù nước>\"\n"
+        "}"
+    )
+
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "format": "json",
+        "stream": False,
+        "options": {
+            "temperature": 0.2
+        }
+    }
+
+    try:
+        res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(5, 45))
+        if res.status_code == 200:
+            res_data = res.json()
+            raw_response = res_data.get("response", "").strip()
+            if raw_response:
+                parsed = parse_qwen_json(raw_response)
+                cal = float(parsed.get("calories") or 0.0)
+                p = float(parsed.get("protein") or 0.0)
+                c = float(parsed.get("carb") or 0.0)
+                f = float(parsed.get("fat") or 0.0)
+                alc_g = float(parsed.get("alcohol_grams") or 0.0)
+                alc_units = round(alc_g / 10.0, 1)
+
+                return {
+                    "meal_type": "Bữa chính",
+                    "dishes": [meal_text],
+                    "total_calories": int(round(cal)),
+                    "protein_g": round(p, 1),
+                    "carb_g": round(c, 1),
+                    "fat_g": round(f, 1),
+                    "alcohol_units": alc_units,
+                    "alcohol_description": "Không có cồn" if alc_units == 0 else f"{alc_g}g cồn (~{alc_units} units)",
+                    "sleep_risk_assessment": parsed.get("recovery_impact") or "✅ Đánh giá Dinh dưỡng & Phục hồi từ Local Ollama.",
+                    "short_summary": parsed.get("summary") or f"Đã ghi nhận (Local Ollama): {meal_text} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g)."
+                }
+    except Exception as err:
+        print(f"⚠️ Local Ollama LLM fallback exception ({base_url}, model '{model_name}'): {err}")
+    return None
+
+
+def parse_qwen_json(raw_text: str) -> dict:
+    """Trích xuất và parse an toàn khối JSON từ response của qwen3-vl:8b
+    (loại bỏ khối suy luận nội tâm Thinking / Chain-of-Thought).
+    """
+    import json
+    import re
+    if not raw_text:
+        return {}
+    # Loại bỏ khối <think>...</think> nếu có
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", str(raw_text), flags=re.DOTALL)
+    # Loại bỏ các đoạn markdown code block nếu có
+    cleaned = re.sub(r"```json\s*", "", cleaned)
+    cleaned = re.sub(r"```\s*", "", cleaned)
+    cleaned = cleaned.strip()
+    # Tìm khối JSON hợp lệ nằm giữa cặp { và } cuối cùng
+    matches = re.findall(r"(\{[\s\S]*?\})", cleaned)
+    for match in reversed(matches):
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        return {}
+
+
+def _sanitize_local_vision_output(data: dict) -> dict:
+    """Sanitize and correct raw outputs from Local Vision (Qwen3-VL):
+    enforce zero calories for clear water and purge nonsensical translations."""
+    summary = str(data.get("summary") or "").strip()
+    summary_lower = summary.lower()
+    if "bột nước" in summary_lower or "nước bột" in summary_lower:
+        data["summary"] = "Nước uống (bù nước)"
+        data["calories"] = 0.0
+        data["protein"] = 0.0
+        data["carb"] = 0.0
+        data["fat"] = 0.0
+        data["recovery_impact"] = "Bù nước và hỗ trợ thanh lọc, cân bằng điện giải tuần hoàn sau tập luyện."
+    elif any(w in summary_lower for w in ["nước lọc", "nước suối", "nước khoáng", "nước kiềm", "trà đá", "water", "plain water"]):
+        if float(data.get("protein") or 0.0) == 0.0 and float(data.get("carb") or 0.0) == 0.0 and float(data.get("fat") or 0.0) == 0.0:
+            data["calories"] = 0.0
+    return data
+
+
+# Backward compatibility aliases
+_sanitize_llava_output = _sanitize_local_vision_output
+_sanitize_qwen_output = _sanitize_local_vision_output
+
+
+async def call_local_qwen_vision(image_bytes: bytes, caption: str = "") -> dict:
+    """Chuyển image bytes thành Base64 và gửi sang Ollama qwen3-vl:8b (Local Vision Fallback trên ROG Ally X)."""
+    import httpx
+
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    caption_context = f"\nChú thích của người gửi: '{caption}'." if caption else ""
+    prompt = (
+        "Bạn là chuyên gia dinh dưỡng thể thao hàng đầu Việt Nam. "
+        "Hãy quan sát kỹ bức ảnh này và phân tích các món ăn hoặc đồ uống có trong hình."
+        f"{caption_context}\n\n"
+        "NGUYÊN TẮC NHẬN DIỆN VÀ TÍNH TOÁN:\n"
+        "1. Nhận diện chuẩn xác các món ăn Việt Nam (cơm trắng, phở, bún chả, cá kho, thịt rang, canh sườn dưa, trứng luộc, ngũ cốc, v.v.).\n"
+        "2. ĐỒ UỐNG TRONG SUỐT (nước lọc, nước suối, nước khoáng kiềm, trà đá không đường): BẮT BUỘC gán calories=0.0, protein=0.0, carb=0.0, fat=0.0.\n"
+        "3. Xuất đúng 3 chỉ số Macro (Protein, Carb, Fat) và tổng Năng lượng (Calories) thực tế.\n"
+        "4. Nhận xét ngắn gọn về tác động phục hồi thể thao, bù nước, điện giải hoặc nạp Glycogen cho vận động viên.\n\n"
+        "BẮT BUỘC TRẢ VỀ DUY NHẤT 1 OBJECT JSON THUẦN TÚY (không bọc ```json, không kèm lời giải thích):\n"
+        "{\n"
+        '  "calories": <float calo>,\n'
+        '  "protein": <float gram protein>,\n'
+        '  "carb": <float gram carb>,\n'
+        '  "fat": <float gram fat>,\n'
+        '  "alcohol_grams": 0.0,\n'
+        '  "summary": "<Tên các món ăn/thức uống ngắn gọn bằng tiếng Việt>",\n'
+        '  "recovery_impact": "<Nhận xét phục hồi thể lực, bù nước, điện giải hoặc cơ bắp>"\n'
+        "}"
+    )
+
+    local_url = (
+        getattr(settings, "local_llm_url", None)
+        or os.getenv("LOCAL_LLM_URL")
+        or "http://localhost:11434"
+    ).rstrip("/")
+    model_name = (
+        getattr(settings, "local_vision_model", None)
+        or os.getenv("LOCAL_VISION_MODEL")
+        or "qwen3-vl:8b"
+    ).strip()
+
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "images": [image_b64],
+        "format": "json",
+        "stream": False,
+        "options": {
+            "temperature": 0.2
+        }
+    }
+
+    timeout_cfg = httpx.Timeout(connect=3.0, read=90.0, write=30.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout_cfg) as client:
+        res = await client.post(f"{local_url}/api/generate", json=payload)
+        res.raise_for_status()
+        raw_response = res.json().get("response", "{}")
+        if isinstance(raw_response, dict):
+            return _sanitize_local_vision_output(raw_response)
+        parsed = parse_qwen_json(raw_response)
+        return _sanitize_local_vision_output(parsed)
+
+
+# Alias
+call_local_vision_ollama = call_local_qwen_vision
+call_local_llava_vision = call_local_qwen_vision
+
+
+def call_local_qwen_vision_sync(image_bytes: bytes, caption: str = "") -> Optional[Dict[str, Any]]:
+    """Synchronous helper for call_local_qwen_vision using requests."""
+    import requests
+    import os
+
+    local_url = (
+        getattr(settings, "local_llm_url", None)
+        or os.getenv("LOCAL_LLM_URL")
+        or "http://localhost:11434"
+    ).rstrip("/")
+    model_name = (
+        getattr(settings, "local_vision_model", None)
+        or os.getenv("LOCAL_VISION_MODEL")
+        or "qwen3-vl:8b"
+    ).strip()
+
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    caption_context = f"\nChú thích của người gửi: '{caption}'." if caption else ""
+    prompt = (
+        "Bạn là chuyên gia dinh dưỡng thể thao hàng đầu Việt Nam. "
+        "Hãy quan sát kỹ bức ảnh này và phân tích các món ăn hoặc đồ uống có trong hình."
+        f"{caption_context}\n\n"
+        "NGUYÊN TẮC NHẬN DIỆN VÀ TÍNH TOÁN:\n"
+        "1. Nhận diện chuẩn xác các món ăn Việt Nam (cơm trắng, phở, bún chả, cá kho, thịt rang, canh sườn dưa, trứng luộc, ngũ cốc, v.v.).\n"
+        "2. ĐỒ UỐNG TRONG SUỐT (nước lọc, nước suối, nước khoáng kiềm, trà đá không đường): BẮT BUỘC gán calories=0.0, protein=0.0, carb=0.0, fat=0.0.\n"
+        "3. Xuất đúng 3 chỉ số Macro (Protein, Carb, Fat) và tổng Năng lượng (Calories) thực tế.\n"
+        "4. Nhận xét ngắn gọn về tác động phục hồi thể thao, bù nước, điện giải hoặc nạp Glycogen cho vận động viên.\n\n"
+        "BẮT BUỘC TRẢ VỀ DUY NHẤT 1 OBJECT JSON THUẦN TÚY (không bọc ```json, không kèm lời giải thích):\n"
+        "{\n"
+        '  "calories": <float calo>,\n'
+        '  "protein": <float gram protein>,\n'
+        '  "carb": <float gram carb>,\n'
+        '  "fat": <float gram fat>,\n'
+        '  "alcohol_grams": 0.0,\n'
+        '  "summary": "<Tên các món ăn/thức uống ngắn gọn bằng tiếng Việt>",\n'
+        '  "recovery_impact": "<Nhận xét phục hồi thể lực, bù nước, điện giải hoặc cơ bắp>"\n'
+        "}"
+    )
+
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "images": [image_b64],
+        "format": "json",
+        "stream": False,
+        "options": {
+            "temperature": 0.2
+        }
+    }
+
+    try:
+        res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
+        if res.status_code == 200:
+            raw_response = res.json().get("response", "{}")
+            if isinstance(raw_response, dict):
+                return _sanitize_local_vision_output(raw_response)
+            parsed = parse_qwen_json(raw_response)
+            return _sanitize_local_vision_output(parsed)
+    except Exception as exc:
+        print(f"⚠️ Local LLM vision sync request failed ({local_url}, {model_name}): {exc}")
+    return None
+
+# Alias
+call_local_vision_ollama_sync = call_local_qwen_vision_sync
+call_local_llava_vision_sync = call_local_qwen_vision_sync
+
 
 def sanitize_vision_analysis(parsed: Dict[str, Any], date_str: str, current_ts: str) -> Dict[str, Any]:
     """Sanitize vision AI output: purge prohibited grains and debounce rapid consecutive log warnings."""
@@ -261,56 +587,66 @@ def analyze_meal_image(
 
     def _safe_print(msg: str):
         try:
-            print(msg)
+            print(msg, flush=True)
         except Exception:
-            print(msg.encode("ascii", "replace").decode("ascii"))
+            print(msg.encode("ascii", "replace").decode("ascii"), flush=True)
 
     if api_key and not api_key.startswith("your_"):
         try:
             from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=api_key)
+            client = create_genai_client(api_key)
             image_part = types.Part.from_bytes(data=img_jpeg_bytes, mime_type="image/jpeg")
 
             vision_env_model = (getattr(settings, "gemini_vision_model", None) or os.getenv("GEMINI_VISION_MODEL") or getattr(settings, "gemini_model", None) or "").strip()
-            primary_model = vision_env_model or "gemini-3.6-flash"
-
-            candidate_models = [
-                primary_model,
-                "gemini-3.6-flash",
-                "gemini-3.5-flash-lite",
-                "gemini-3.1-pro-preview"
-            ]
+            deprecated_models = {"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"}
+            raw_candidates = list(VISION_MODELS)
+            if vision_env_model and vision_env_model not in deprecated_models and vision_env_model not in raw_candidates:
+                raw_candidates.append(vision_env_model)
             seen = set()
-            models_to_try = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+            models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
             for model in models_to_try:
-                try:
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=[image_part, user_text],
-                        config=types.GenerateContentConfig(
-                            system_instruction=VISION_SYSTEM_PROMPT,
-                            temperature=0.2,
-                            response_mime_type="application/json"
+                max_retries = 2  # Lần 1 + tối đa 1 lần retry nếu 503/429
+                model_succeeded = False
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        response = client.models.generate_content(
+                            model=model,
+                            contents=[image_part, user_text],
+                            config=types.GenerateContentConfig(
+                                system_instruction=VISION_SYSTEM_PROMPT,
+                                temperature=0.2,
+                                response_mime_type="application/json",
+                                http_options=types.HttpOptions(timeout=20.0)
+                            )
                         )
-                    )
-                    ai_raw_text = (response.text or "").strip()
-                    if ai_raw_text:
-                        _safe_print(f"✅ Gemini Vision analysis succeeded using model '{model}'")
-                        break
-                except Exception as exc:
-                    last_err = exc
-                    err_str = str(exc)
-                    err_lower = err_str.lower()
-                    if "429" in err_str or "resource_exhausted" in err_lower or "quota" in err_lower:
-                        _safe_print(f"🔄 Model '{model}' hit 429 Quota Exhausted. Auto-falling back to next model...")
-                    elif "404" in err_str or "not found" in err_lower:
-                        _safe_print(f"⚠️ Model '{model}' not found or deprecated (404). Auto-falling back to next model...")
-                    else:
-                        _safe_print(f"❌ Vision analysis attempt failed for model '{model}': {exc}")
-                    continue
+                        ai_raw_text = (response.text or "").strip()
+                        if ai_raw_text:
+                            _safe_print(f"✅ Gemini Vision analysis succeeded using model '{model}' (attempt {attempt}/{max_retries})")
+                            model_succeeded = True
+                            break
+                    except Exception as exc:
+                        last_err = exc
+                        err_str = str(exc)
+                        err_lower = err_str.lower()
+                        _safe_print(f"⚠️ Gemini Vision attempt {attempt}/{max_retries} failed for model '{model}': {exc}")
+
+                        # If model is deprecated or not found (404), switch immediately to next model without retrying
+                        if "404" in err_str or "not found" in err_lower or "no longer available" in err_lower:
+                            _safe_print(f"🔄 Model '{model}' is deprecated/not found (404). Skipping retries and switching to next model...")
+                            break
+
+                        # Khi gặp mã lỗi 503 UNAVAILABLE hoặc 429: chỉ thử lại tối đa 1 lần với backoff 1s
+                        if attempt < max_retries and ("503" in err_str or "unavailable" in err_lower or "429" in err_str or "quota" in err_lower or "resource_exhausted" in err_lower):
+                            _safe_print(f"⏳ Waiting 1s before retry attempt {attempt + 1}/{max_retries} for model '{model}'...")
+                            time.sleep(1)
+                        else:
+                            _safe_print(f"🔄 Model '{model}' exhausted retry attempt. Switching to next model...")
+                            break
+                if model_succeeded:
+                    break
         except Exception as init_err:
             last_err = init_err
             _safe_print(f"❌ Failed to initialize Google GenAI Client: {init_err}")
@@ -325,33 +661,102 @@ def analyze_meal_image(
             ai_raw_text = openai_res.strip()
 
     if not ai_raw_text:
-        # Structured fallback record if vision API failed completely or missing credentials/quota
-        err_msg = str(last_err or "Unknown error")
-        err_lower = err_msg.lower()
+        clean_caption = (caption or "").strip()
 
-        if "401" in err_msg or "unauthenticated" in err_lower or "invalid authentication" in err_lower or "access_token" in err_lower:
-            fallback_risk = "⚠️ Gemini Vision API chưa được xác thực (Lỗi 401 Unauthenticated). Vui lòng kiểm tra lại GEMINI_API_KEY trong file .env."
-            fallback_summary = f"Đã ghi nhận: {caption or 'Bữa ăn chưa phân biệt'} (~600 kcal | P: 30g | C: 50g | F: 20g)."
-        elif "429" in err_msg or "prepayment" in err_lower or "depleted" in err_lower or "quota" in err_lower:
-            fallback_risk = "⚠️ Gemini Vision API tạm thời hết Quota (Lỗi 429 Depleted). Vui lòng kiểm tra lại Quota tại AI Studio."
-            fallback_summary = f"Đã ghi nhận: {caption or 'Bữa ăn chưa phân biệt'} (~600 kcal | P: 30g | C: 50g | F: 20g)."
-        else:
-            fallback_risk = "⚠️ Tạm thời không thể kết nối AI Vision. Bữa ăn đã được ghi nhận vào hệ thống theo chú thích."
-            fallback_summary = f"Đã ghi nhận: {caption or 'Bữa ăn chưa phân biệt'} (~600 kcal | P: 30g | C: 50g | F: 20g)."
+        # NGUYÊN TẮC 1 (Hybrid Text-Vision): ƯU TIÊN CAPTION CỦA NGƯỜI DÙNG HƠN HÌNH ẢNH!
+        # NẾU CÓ CAPTION (ví dụ: 'uống 300ml nước kiềm', 'cơm cá bống kho'):
+        # Bỏ qua việc để LLaVA đoán ảnh (vì LLaVA tiếng Việt rất yếu, dễ đoán mò 'Bột nước 100 kcal').
+        # Gửi thẳng nội dung caption vào LLM Text chuyên dụng (Gemini Flash -> Ollama qwen2.5:7b trên Ally X).
+        if clean_caption:
+            _safe_print(f"🔄 Gemini Vision Cloud unavailable ({last_err}). Người dùng có kèm chú thích: '{clean_caption}' -> Ưu tiên chuyển sang Text Cascade LLM (Gemini / qwen2.5:7b)...")
+            caption_res = analyze_quick_log_text(clean_caption, timestamp=ts_str)
 
+            fallback_notice = "⚠️ [Vision Cloud lỗi - Đã phân tích tự động từ chú thích bằng Local AI / Text LLM]"
+            caption_res["fallback_notice"] = fallback_notice
+            caption_res["is_caption_fallback"] = True
+
+            current_risk = caption_res.get("sleep_risk_assessment") or ""
+            if fallback_notice not in current_risk:
+                caption_res["sleep_risk_assessment"] = f"{current_risk}\n\nℹ️ {fallback_notice}"
+
+            caption_res["raw_ai_response"] = caption_res.get("raw_ai_response") or f"vision_fallback_to_text: {last_err}"
+            return sanitize_vision_analysis(caption_res, date_str, ts_str)
+
+        # NGUYÊN TẮC 2: NẾU KHÔNG CÓ CAPTION (ảnh trần không có chú thích):
+        # Mới kích hoạt Tuyến 2 (Local Vision Fallback trên ROG Ally X): Dùng Qwen3-VL (hoặc LLaVA) nhìn ảnh để suy luận món ăn.
+        local_v_model = (
+            getattr(settings, "local_vision_model", None)
+            or os.getenv("LOCAL_VISION_MODEL")
+            or "qwen3-vl:8b"
+        ).strip()
+        _safe_print(f"🔄 Gemini Vision Cloud unavailable và KHÔNG có chú thích. Kích hoạt Tuyến 2: Local Vision Fallback (Ollama {local_v_model} trên ROG Ally X)...")
+        local_vision_data = None
+
+        # Synchronous call via requests
+        try:
+            local_vision_data = call_local_qwen_vision_sync(img_jpeg_bytes, caption="")
+        except Exception as sync_vis_err:
+            _safe_print(f"⚠️ Local Vision Ollama ({local_v_model}) sync exception: {sync_vis_err}")
+            local_vision_data = None
+
+        # If mocked or returned via call_local_qwen_vision
+        if not local_vision_data or not isinstance(local_vision_data, dict):
+            try:
+                res_or_coro = call_local_qwen_vision(img_jpeg_bytes, caption="")
+                if isinstance(res_or_coro, dict):
+                    local_vision_data = res_or_coro
+            except Exception as local_vis_err:
+                _safe_print(f"⚠️ Local Vision Ollama ({local_v_model}) fallback exception: {local_vis_err}")
+
+        if local_vision_data and isinstance(local_vision_data, dict) and (local_vision_data.get("calories") is not None or local_vision_data.get("summary")):
+            _safe_print(f"✅ Local Vision analysis succeeded using Ollama {local_v_model} on ROG Ally X!")
+            cal = float(local_vision_data.get("calories") or 0.0)
+            p = float(local_vision_data.get("protein") or 0.0)
+            c = float(local_vision_data.get("carb") or 0.0)
+            f = float(local_vision_data.get("fat") or 0.0)
+            alc_g = float(local_vision_data.get("alcohol_grams") or 0.0)
+            alc_units = round(alc_g / 10.0, 1)
+
+            summary = str(local_vision_data.get("summary") or "Bữa ăn phân tích qua Local Vision").strip()
+            recovery_impact = str(local_vision_data.get("recovery_impact") or "Bữa ăn hỗ trợ phục hồi cơ bắp và năng lượng.").strip()
+
+            fallback_notice = f"⚠️ [AI Vision: Local Ally X ({local_v_model})]"
+            dishes_list = [d.strip() for d in summary.split(",") if d.strip()] if "," in summary else [summary]
+
+            parsed = {
+                "date": date_str,
+                "timestamp": ts_str,
+                "meal_type": "Bữa chính",
+                "dishes": dishes_list if dishes_list else ["Bữa ăn"],
+                "total_calories": int(round(cal)),
+                "protein_g": round(p, 1),
+                "carb_g": round(c, 1),
+                "fat_g": round(f, 1),
+                "alcohol_units": alc_units,
+                "alcohol_description": "Không có cồn" if alc_units == 0 else f"{alc_units} đơn vị cồn",
+                "sleep_risk_assessment": f"✅ Đánh giá Dinh dưỡng & Phục hồi ({local_v_model}): {recovery_impact}\n\nℹ️ {fallback_notice}",
+                "short_summary": f"Đã ghi nhận [AI Vision: Local Ally X ({local_v_model})]: {summary} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g).",
+                "raw_ai_response": json.dumps(local_vision_data, ensure_ascii=False),
+                "fallback_notice": fallback_notice,
+                "is_local_vision": True
+            }
+            return sanitize_vision_analysis(parsed, date_str, ts_str)
+
+        # Cả Cloud Vision lẫn Local Vision đều lỗi và KHÔNG có caption
+        _safe_print(f"❌ Gemini Vision & Local Vision unavailable and NO caption provided to fallback. Error: {last_err}")
         return {
+            "status": "error",
+            "error_code": "vision_failed_no_caption",
+            "error_message": "Không thể phân tích ảnh do lỗi kết nối AI Vision (Cloud & Local Ally X). Vui lòng gõ tên món ăn hoặc gửi kèm chú thích.",
             "date": date_str,
             "timestamp": ts_str,
-            "meal_type": "Bữa chính",
-            "dishes": [caption or "Bữa ăn chưa phân biệt"],
-            "total_calories": 600,
-            "protein_g": 30.0,
-            "carb_g": 50.0,
-            "fat_g": 20.0,
-            "alcohol_units": 0.0,
-            "alcohol_description": "Không ghi nhận",
-            "sleep_risk_assessment": fallback_risk,
-            "short_summary": fallback_summary,
+            "dishes": [],
+            "total_calories": None,
+            "protein_g": None,
+            "carb_g": None,
+            "fat_g": None,
+            "sleep_risk_assessment": "⚠️ Không thể phân tích ảnh do lỗi kết nối AI Vision (Cloud & Local Ally X). Vui lòng gõ tên món ăn hoặc gửi kèm chú thích.",
+            "short_summary": "⚠️ Lỗi kết nối AI Vision (Cloud & Local Ally X) và không có chú thích món ăn.",
             "raw_ai_response": str(last_err)
         }
 
@@ -368,20 +773,35 @@ def analyze_meal_image(
     try:
         parsed = json.loads(clean_text)
     except Exception:
-        parsed = {}
+        import re
+        match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(0))
+            except Exception:
+                parsed = {}
+        else:
+            parsed = {}
+
+    def _to_num(val, default, is_int=False):
+        try:
+            n = float(val)
+            return int(round(n)) if is_int else round(n, 1)
+        except Exception:
+            return default
 
     parsed["date"] = date_str
     parsed["timestamp"] = ts_str
     parsed["raw_ai_response"] = ai_raw_text
 
-    # Ensure required default keys exist
+    # Ensure required keys exist without hardcoded fake values
     parsed.setdefault("meal_type", "Bữa chính")
     parsed.setdefault("dishes", [caption] if caption else ["Bữa ăn"])
-    parsed.setdefault("total_calories", 600)
-    parsed.setdefault("protein_g", 30.0)
-    parsed.setdefault("carb_g", 50.0)
-    parsed.setdefault("fat_g", 20.0)
-    parsed.setdefault("alcohol_units", 0.0)
+    parsed["total_calories"] = _to_num(parsed.get("total_calories"), 0, is_int=True)
+    parsed["protein_g"] = _to_num(parsed.get("protein_g"), 0.0)
+    parsed["carb_g"] = _to_num(parsed.get("carb_g"), 0.0)
+    parsed["fat_g"] = _to_num(parsed.get("fat_g"), 0.0)
+    parsed["alcohol_units"] = _to_num(parsed.get("alcohol_units"), 0.0)
     parsed.setdefault("alcohol_description", "")
     parsed.setdefault("sleep_risk_assessment", "✅ Đánh giá Dinh dưỡng & Phục hồi: Khẩu phần nạp phù hợp thể trạng VĐV.")
 
@@ -442,7 +862,7 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        client = create_genai_client(api_key)
         user_prompt = (
             f"Thời điểm ghi nhận: {ts_str}.\n"
             f"Mô tả món ăn/bữa ăn của vận động viên: '{description_text}'.\n"
@@ -450,42 +870,131 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
             + _get_intraday_cumulative_context(date_str, current_ts=ts_str)
         )
 
-        env_model = (getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL") or "gemini-3.6-flash").strip()
+        env_model = (getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL") or "").strip()
+        default_candidates = [
+            "gemini-2.5-flash",
+            "gemini-3.8-flash",
+        ]
+        deprecated_models = {"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"}
+        raw_candidates = ([env_model] if env_model and env_model not in deprecated_models else []) + default_candidates
+        seen = set()
+        models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
-        response = client.models.generate_content(
-            model=env_model,
-            contents=[user_prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=VISION_SYSTEM_PROMPT,
-                temperature=0.2,
-                response_mime_type="application/json"
-            )
-        )
-        ai_raw_text = (response.text or "").strip()
-        if ai_raw_text.startswith("```json"):
-            ai_raw_text = ai_raw_text[7:]
-        elif ai_raw_text.startswith("```"):
-            ai_raw_text = ai_raw_text[3:]
-        if ai_raw_text.endswith("```"):
-            ai_raw_text = ai_raw_text[:-3]
-        ai_raw_text = ai_raw_text.strip()
+        ai_raw_text = ""
+        last_err = None
+        model_used = None
 
-        parsed = json.loads(ai_raw_text)
-        parsed["date"] = date_str
-        parsed["timestamp"] = ts_str
-        parsed.setdefault("meal_type", "Bữa ăn")
-        parsed.setdefault("dishes", [description_text])
-        parsed.setdefault("total_calories", 550)
-        parsed.setdefault("protein_g", 28.0)
-        parsed.setdefault("carb_g", 65.0)
-        parsed.setdefault("fat_g", 18.0)
-        parsed.setdefault("alcohol_units", 0.0)
-        parsed.setdefault("alcohol_description", "Không có cồn")
-        parsed.setdefault("sleep_risk_assessment", "✅ Tác động Phục hồi & Giấc ngủ: Ghi nhận nhanh qua văn bản.")
-        if not parsed.get("short_summary"):
-            parsed["short_summary"] = f"Đã ghi nhận: {description_text} (~{parsed['total_calories']} kcal, {parsed['protein_g']}g Protein)."
-        return sanitize_vision_analysis(parsed, date_str, ts_str)
+        for model in models_to_try:
+            max_retries = 2
+            model_succeeded = False
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=[user_prompt],
+                        config=types.GenerateContentConfig(
+                            system_instruction=VISION_SYSTEM_PROMPT,
+                            temperature=0.2,
+                            response_mime_type="application/json",
+                            http_options=types.HttpOptions(timeout=20.0)
+                        )
+                    )
+                    text_content = (response.text or "").strip()
+                    if text_content:
+                        ai_raw_text = text_content
+                        model_used = model
+                        model_succeeded = True
+                        print(f"✅ Quick Log nutrition estimation succeeded using model '{model}' (attempt {attempt}/{max_retries})")
+                        break
+                except Exception as exc:
+                    last_err = exc
+                    err_str = str(exc)
+                    err_lower = err_str.lower()
+                    print(f"⚠️ Quick Log Gemini attempt {attempt}/{max_retries} failed for model '{model}': {exc}")
+
+                    # If model is deprecated or not found (404), switch immediately to next model
+                    if "404" in err_str or "not found" in err_lower or "no longer available" in err_lower:
+                        print(f"🔄 Model '{model}' is deprecated/not found (404). Skipping retries and switching to next model...")
+                        break
+
+                    # Khi gặp 503 hoặc 429: chỉ thử lại tối đa 1 lần với backoff 1s
+                    if attempt < max_retries and ("503" in err_str or "unavailable" in err_lower or "429" in err_str or "quota" in err_lower or "resource_exhausted" in err_lower):
+                        print(f"⏳ Waiting 1s before retry attempt {attempt + 1}/{max_retries} for model '{model}'...")
+                        time.sleep(1)
+                    else:
+                        print(f"🔄 Model '{model}' exhausted retry attempt. Switching to next candidate model...")
+                        break
+
+            if model_succeeded:
+                break
+
+        if not ai_raw_text:
+            openai_res = analyze_quick_log_text_openai(user_prompt)
+            if openai_res:
+                ai_raw_text = openai_res.strip()
+                model_used = "openai"
+                print("✅ Quick Log nutrition estimation succeeded using OpenAI fallback (gpt-4o-mini)")
+
+        parsed = None
+        if ai_raw_text:
+            cleaned_text = ai_raw_text
+            if cleaned_text.startswith("```json"):
+                cleaned_text = cleaned_text[7:]
+            elif cleaned_text.startswith("```"):
+                cleaned_text = cleaned_text[3:]
+            if cleaned_text.endswith("```"):
+                cleaned_text = cleaned_text[:-3]
+            cleaned_text = cleaned_text.strip()
+
+            try:
+                parsed = json.loads(cleaned_text)
+            except Exception as json_err:
+                print(f"⚠️ Quick Log JSON parse error for model '{model_used}': {json_err}. Raw text: {cleaned_text[:120]}")
+                import re
+                match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+                if match:
+                    try:
+                        parsed = json.loads(match.group(0))
+                    except Exception:
+                        parsed = None
+
+        if not parsed:
+            ollama_res = call_local_ollama_fallback(description_text)
+            if ollama_res:
+                local_model = getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b"
+                print(f"✅ Quick Log nutrition estimation succeeded using Local Ollama fallback ({local_model})")
+                parsed = ollama_res
+
+        if parsed and isinstance(parsed, dict):
+            def _to_num(val, default, is_int=False):
+                try:
+                    n = float(val)
+                    return int(round(n)) if is_int else round(n, 1)
+                except Exception:
+                    return default
+
+            parsed["date"] = date_str
+            parsed["timestamp"] = ts_str
+            parsed.setdefault("meal_type", "Bữa ăn")
+            parsed.setdefault("dishes", [description_text])
+            parsed["total_calories"] = _to_num(parsed.get("total_calories"), 550, is_int=True)
+            parsed["protein_g"] = _to_num(parsed.get("protein_g"), 28.0)
+            parsed["carb_g"] = _to_num(parsed.get("carb_g"), 65.0)
+            parsed["fat_g"] = _to_num(parsed.get("fat_g"), 18.0)
+            parsed["alcohol_units"] = _to_num(parsed.get("alcohol_units"), 0.0)
+            parsed.setdefault("alcohol_description", "Không có cồn")
+            parsed.setdefault("sleep_risk_assessment", "✅ Tác động Phục hồi & Giấc ngủ: Ghi nhận nhanh qua văn bản.")
+            if not parsed.get("short_summary"):
+                parsed["short_summary"] = (
+                    f"Đã ghi nhận (Quick Log): {description_text} "
+                    f"(~{parsed['total_calories']} kcal | P: {parsed['protein_g']}g | C: {parsed['carb_g']}g | F: {parsed['fat_g']}g)."
+                )
+            return sanitize_vision_analysis(parsed, date_str, ts_str)
+
+        print(f"⚠️ Quick Log using fallback parsed due to AI failure. Last error: {last_err}")
+        return sanitize_vision_analysis(fallback_parsed, date_str, ts_str)
     except Exception as err:
-        print(f"⚠️ Quick Log AI estimation fallback: {err}")
+        print(f"⚠️ Quick Log AI estimation unexpected error: {err}")
         return sanitize_vision_analysis(fallback_parsed, date_str, ts_str)
 

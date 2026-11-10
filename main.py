@@ -150,6 +150,57 @@ def cleanup_duplicates():
     count = delete_duplicate_nutrition_logs()
     click.echo(f"✅ Cleanup complete: {count} duplicate log entries purged.")
 
+
+@cli.command("reparse-meals")
+@click.option("--limit", default=None, type=int, help="Giới hạn số lượng bản ghi cần reparse (mặc định: tất cả)")
+@click.option("--date", "target_date", default=None, help="Chỉ quét các bữa ăn của ngày cụ thể (YYYY-MM-DD)")
+@click.option("--dry-run", is_flag=True, help="Chạy thử xem trước kết quả AI mà không cập nhật vào SQLite")
+def reparse_meals(limit, target_date, dry_run):
+    """Quét và phân tích lại dinh dưỡng (Calories, Protein, Carb, Fat) cho các bữa ăn bị thiếu hoặc bằng 0."""
+    from src.db.nutrition_repository import reparse_uncalculated_meal_logs
+
+    mode_label = "[DRY-RUN] " if dry_run else ""
+    click.echo(f"🔍 {mode_label}Đang quét các bữa ăn có Calories/Protein bị thiếu hoặc bằng 0 trong SQLite...")
+
+    res = reparse_uncalculated_meal_logs(target_date=target_date, limit=limit, dry_run=dry_run)
+
+    if res.get("status") == "error":
+        click.echo(f"❌ Lỗi: {res.get('message')}")
+        return
+
+    found = res.get("total_found", 0)
+    updated = res.get("updated_count", 0)
+    table = res.get("table", "nutrition_logs")
+
+    if found == 0:
+        click.echo("✅ Không có bản ghi nào bị thiếu hoặc bằng 0 dinh dưỡng.")
+        return
+
+    click.echo(f"📋 Tìm thấy {found} bản ghi cần phân tích lại trong bảng `{table}`.")
+
+    for item in res.get("records", []):
+        rec_id = item["id"]
+        rec_date = item["date"]
+        desc = item["description"]
+        old_val = item["old"]
+        new_val = item["new"]
+        click.echo(f"\n🍱 [ID #{rec_id} - {rec_date}] '{desc}'")
+        click.echo(f"   • Cũ: {old_val.get('calories', 0)} kcal | P: {old_val.get('protein', 0.0)}g")
+        click.echo(f"   • Mới: {new_val.get('calories', 0)} kcal | P: {new_val.get('protein', 0.0)}g | C: {new_val.get('carb', 0.0)}g | F: {new_val.get('fat', 0.0)}g")
+
+    action_label = "Xem trước hoàn tất (không lưu DB)" if dry_run else "Cập nhật thành công vào SQLite"
+    click.echo(f"\n✨ {action_label}: {updated}/{found} bản ghi.")
+
+
+@cli.command("reanalyze-meal")
+@click.option("--meal-id", type=int, default=129, help="ID của bản ghi bữa ăn trong nutrition_logs (Mặc định: 129)")
+@click.option("--chat-id", type=str, default="1022843967", help="Telegram chat ID để gửi Message Card (Mặc định: 1022843967)")
+@click.option("--no-telegram", is_flag=True, help="Không gửi tin nhắn tới Telegram")
+def reanalyze_meal_cmd(meal_id, chat_id, no_telegram):
+    """Phân tích lại dinh dưỡng và sinh học chuyên sâu cho 1 bữa ăn theo ID và bắn thẻ Telegram."""
+    from scripts.reanalyze_meal import reanalyze_meal_record
+    reanalyze_meal_record(meal_id=meal_id, send_telegram=not no_telegram, chat_id=chat_id)
+
 # ==============================================================================
 # NHÓM 1: ĐỒNG BỘ DỮ LIỆU (SYNC-ONLY COMMANDS)
 # ==============================================================================

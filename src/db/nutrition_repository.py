@@ -264,3 +264,159 @@ def get_remaining_nutrition_quota(
         "remaining_carbs": rem_c,
         "remaining_fat": rem_f
     }
+
+
+def reparse_uncalculated_meal_logs(
+    db_path: Optional[Path] = None,
+    target_date: Optional[str] = None,
+    limit: Optional[int] = None,
+    dry_run: bool = False
+) -> Dict[str, Any]:
+    """Scan meal/nutrition logs for records with missing or zero calories/protein,
+    re-analyze them using AI (with fallback & retry models), and update them in SQLite.
+    """
+    from src.analytics.vision_analyst import analyze_quick_log_text
+
+    def _extract_meal_text(raw_val: Any) -> str:
+        if not raw_val:
+            return ""
+        if isinstance(raw_val, list):
+            return ", ".join(str(x).strip() for x in raw_val if x)
+        s = str(raw_val).strip()
+        if (s.startswith("[") and s.endswith("]")) or (s.startswith("{") and s.endswith("}")):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return ", ".join(str(x).strip() for x in parsed if x)
+                if isinstance(parsed, dict) and "dishes" in parsed:
+                    return _extract_meal_text(parsed["dishes"])
+            except Exception:
+                pass
+        return s
+
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+
+        # 1. Determine table name (nutrition_logs or meal_logs)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('nutrition_logs', 'meal_logs')")
+        tables = [r[0] for r in cursor.fetchall()]
+        if not tables:
+            return {"status": "error", "message": "Neither 'nutrition_logs' nor 'meal_logs' table exists in database.", "total_found": 0, "updated_count": 0}
+
+        table_name = "nutrition_logs" if "nutrition_logs" in tables else tables[0]
+
+        # 2. Inspect available column names
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        cols = {row[1]: row[1] for row in cursor.fetchall()}
+
+        text_col = "raw_text" if "raw_text" in cols else ("dishes" if "dishes" in cols else None)
+        cal_col = "calories" if "calories" in cols else ("total_calories" if "total_calories" in cols else None)
+        p_col = "protein" if "protein" in cols else ("protein_g" if "protein_g" in cols else None)
+        c_col = "carb" if "carb" in cols else ("carb_g" if "carb_g" in cols else None)
+        f_col = "fat" if "fat" in cols else ("fat_g" if "fat_g" in cols else None)
+
+        if not text_col or not cal_col or not p_col:
+            return {
+                "status": "error",
+                "message": f"Required columns not found in {table_name} (found: text={text_col}, cal={cal_col}, p={p_col}).",
+                "total_found": 0,
+                "updated_count": 0
+            }
+
+        # 3. Query uncalculated or zero macro records
+        query = f"""
+            SELECT id, date, timestamp, {text_col}, {cal_col}, {p_col}
+            FROM {table_name}
+            WHERE ({cal_col} IS NULL OR {cal_col} = 0 OR {p_col} = 0 OR {p_col} IS NULL)
+              AND {text_col} IS NOT NULL AND TRIM({text_col}) != '' AND TRIM({text_col}) != '[]'
+        """
+        params = []
+        if target_date:
+            query += " AND date = ?"
+            params.append(target_date)
+
+        query += " ORDER BY id ASC"
+        if limit and limit > 0:
+            query += f" LIMIT {int(limit)}"
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+    if not rows:
+        return {"status": "success", "message": "No uncalculated meal records found.", "total_found": 0, "updated_count": 0, "records": []}
+
+    updated_records = []
+    updated_count = 0
+
+    for r in rows:
+        rec_id = r[0]
+        rec_date = r[1]
+        rec_ts = r[2] or f"{rec_date} 12:00:00"
+        raw_text_val = r[3]
+        old_cal = r[4]
+        old_p = r[5]
+
+        meal_desc = _extract_meal_text(raw_text_val)
+        if not meal_desc:
+            continue
+
+        # 4. Call AI estimation with built-in retry and fallback
+        analysis = analyze_quick_log_text(meal_desc, timestamp=rec_ts)
+
+        new_cal = int(round(analysis.get("total_calories") or analysis.get("calories") or 0))
+        new_p = round(float(analysis.get("protein_g") or analysis.get("protein") or 0.0), 1)
+        new_c = round(float(analysis.get("carb_g") or analysis.get("carb") or 0.0), 1)
+        new_f = round(float(analysis.get("fat_g") or analysis.get("fat") or 0.0), 1)
+        meal_type = analysis.get("meal_type")
+        short_summary = analysis.get("short_summary")
+        sleep_risk = analysis.get("sleep_risk_assessment")
+
+        rec_info = {
+            "id": rec_id,
+            "date": rec_date,
+            "description": meal_desc,
+            "old": {"calories": old_cal, "protein": old_p},
+            "new": {"calories": new_cal, "protein": new_p, "carb": new_c, "fat": new_f}
+        }
+
+        # 5. Update SQLite record
+        if not dry_run:
+            with get_db_connection(db_path) as conn:
+                cur = conn.cursor()
+                update_fields = [f"{cal_col} = ?", f"{p_col} = ?"]
+                update_vals = [new_cal, new_p]
+
+                if c_col:
+                    update_fields.append(f"{c_col} = ?")
+                    update_vals.append(new_c)
+                if f_col:
+                    update_fields.append(f"{f_col} = ?")
+                    update_vals.append(new_f)
+
+                if "meal_type" in cols and meal_type:
+                    update_fields.append("meal_type = COALESCE(?, meal_type)")
+                    update_vals.append(meal_type)
+                if "short_summary" in cols and short_summary:
+                    update_fields.append("short_summary = COALESCE(?, short_summary)")
+                    update_vals.append(short_summary)
+                if "sleep_risk_assessment" in cols and sleep_risk:
+                    update_fields.append("sleep_risk_assessment = COALESCE(?, sleep_risk_assessment)")
+                    update_vals.append(sleep_risk)
+
+                update_vals.append(rec_id)
+                update_sql = f"UPDATE {table_name} SET {', '.join(update_fields)} WHERE id = ?"
+                cur.execute(update_sql, tuple(update_vals))
+                conn.commit()
+
+        updated_count += 1
+        updated_records.append(rec_info)
+
+    return {
+        "status": "success",
+        "table": table_name,
+        "dry_run": dry_run,
+        "total_found": len(rows),
+        "updated_count": updated_count,
+        "records": updated_records
+    }
+

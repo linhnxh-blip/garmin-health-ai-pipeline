@@ -174,6 +174,17 @@ class TelegramMealBot:
                     print(f"⚠️ Failed to send error reply: {send_err}")
             return {"status": "error", "reason": f"vision_failed: {err}"}
 
+        # Check if Vision failed and no caption was provided to fallback
+        if analysis.get("status") == "error" or analysis.get("error_code") == "vision_failed_no_caption":
+            err_msg = analysis.get("error_message") or "⚠️ Không thể phân tích ảnh do lỗi kết nối AI Vision. Vui lòng gõ tên món ăn hoặc gửi kèm chú thích."
+            print(f"⚠️ Image analysis stopped without saving: {err_msg}")
+            if chat_id:
+                try:
+                    self.send_message(chat_id, err_msg, reply_to_message_id=message_id)
+                except Exception as send_err:
+                    print(f"⚠️ Failed to send error reply: {send_err}")
+            return {"status": "error", "reason": "vision_failed_no_caption", "message": err_msg}
+
         analysis["image_path"] = str(saved_path)
 
         # 4. Save to SQLite DB
@@ -290,6 +301,7 @@ class TelegramMealBot:
                 "• `/report` | `/baocao`: Phân tích lại & bắn 4 thẻ báo cáo hoàn chỉnh mới nhất.\n"
                 "• `/sync`: Kéo dữ liệu Garmin/Omron mới nhất vào DB (không tạo báo cáo).\n"
                 "• `/status`: Trả về tóm tắt nhanh chỉ số sinh lý & dinh dưỡng hôm nay.\n"
+                "• `/retry_last`: Tự động phân tích lại bữa ăn gần nhất bị lỗi hoặc calo mặc định.\n"
                 "• `/log_standard`: Nạp nhanh ước lượng chuẩn Rest Day (2,150 kcal / 122g Protein).\n"
                 "• `/quick_log [mô tả]`: Ghi nhanh bữa ăn qua văn bản (VD: `/quick_log 1 phở bò bắp`).\n"
                 "• `/help`: Hiển thị menu hướng dẫn này.\n\n"
@@ -348,14 +360,21 @@ class TelegramMealBot:
                     self.send_message(chat_id, msg_prompt, reply_to_message_id=message_id)
                 return {"status": "prompt", "command": cmd, "reply": msg_prompt}
 
-            from src.analytics.vision_analyst import analyze_quick_log_text
-            analysis = analyze_quick_log_text(log_desc)
-            record_id = save_nutrition_log(analysis)
-            reply_text = build_telegram_nutrition_reply(analysis)
+            try:
+                from src.analytics.vision_analyst import analyze_quick_log_text
+                analysis = analyze_quick_log_text(log_desc)
+                record_id = save_nutrition_log(analysis)
+                reply_text = build_telegram_nutrition_reply(analysis)
 
-            if chat_id:
-                self.send_message(chat_id, reply_text, reply_to_message_id=message_id)
-            return {"status": "success", "command": cmd, "record_id": record_id, "reply": reply_text}
+                if chat_id:
+                    self.send_message(chat_id, reply_text, reply_to_message_id=message_id)
+                return {"status": "success", "command": cmd, "record_id": record_id, "reply": reply_text}
+            except Exception as cmd_err:
+                print(f"❌ Error in /quick_log command handler: {cmd_err}")
+                err_msg = f"⚠️ Lỗi xử lý /quick_log: {cmd_err}. Vui lòng thử lại hoặc gõ /log_standard."
+                if chat_id:
+                    self.send_message(chat_id, err_msg, reply_to_message_id=message_id)
+                return {"status": "error", "command": cmd, "error": str(cmd_err)}
 
         if cmd in ["/sync"]:
             ack_msg = "🔄 Đang đồng bộ dữ liệu mới nhất từ Garmin/Omron..."
@@ -376,6 +395,125 @@ class TelegramMealBot:
                 self.send_message(chat_id, ack_msg, reply_to_message_id=message_id)
                 self._run_report_async(chat_id)
             return {"status": "success", "command": cmd, "async": True, "ack": ack_msg}
+
+        if cmd in ["/retry_last", "/retry", "/reanalyze"]:
+            from src.db.connection import get_db_connection
+            from src.analytics.vision_analyst import analyze_meal_image, analyze_quick_log_text
+            import os
+            import json
+            import sqlite3
+
+            print(f"🔄 Executing /retry_last requested by chat {chat_id}...")
+            # 1. Query candidate record that failed or has default values
+            with get_db_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute("""
+                    SELECT * FROM nutrition_logs 
+                    WHERE (
+                        (total_calories = 600 AND protein_g = 30.0 AND carb_g = 50.0 AND fat_g = 20.0)
+                        OR sleep_risk_assessment LIKE '%Tạm thời không thể kết nối%'
+                        OR sleep_risk_assessment LIKE '%Không thể phân tích ảnh%'
+                        OR sleep_risk_assessment LIKE '%lỗi kết nối%'
+                        OR raw_ai_response LIKE '%404%'
+                        OR raw_ai_response LIKE '%503%'
+                        OR raw_ai_response LIKE '%UNAVAILABLE%'
+                        OR total_calories IS NULL
+                        OR total_calories = 0
+                    )
+                    ORDER BY id DESC LIMIT 1
+                """)
+                row = c.fetchone()
+                if not row:
+                    # Fallback to the most recent record with an image
+                    c.execute("SELECT * FROM nutrition_logs WHERE image_path IS NOT NULL AND image_path != '' ORDER BY id DESC LIMIT 1")
+                    row = c.fetchone()
+                if not row:
+                    # Fallback to absolute latest meal
+                    c.execute("SELECT * FROM nutrition_logs ORDER BY id DESC LIMIT 1")
+                    row = c.fetchone()
+
+            if not row:
+                no_meal_msg = "ℹ️ Không tìm thấy bữa ăn nào trong hệ thống để phân tích lại."
+                if chat_id:
+                    self.send_message(chat_id, no_meal_msg, reply_to_message_id=message_id)
+                return {"status": "error", "command": cmd, "reason": "no_record_found"}
+
+            rec = dict(row)
+            rec_id = rec.get("id")
+            raw_dishes = rec.get("dishes")
+            caption_text = ""
+            if raw_dishes:
+                try:
+                    parsed_d = json.loads(raw_dishes)
+                    caption_text = ", ".join(parsed_d) if isinstance(parsed_d, list) else str(parsed_d)
+                except Exception:
+                    caption_text = str(raw_dishes).strip("[]'\"")
+
+            img_path = rec.get("image_path")
+            ts = rec.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            ack_text = f"🔄 Đang phân tích lại bữa ăn gần nhất (ID: {rec_id} - '{caption_text or 'Ảnh bữa ăn'}')..."
+            if chat_id:
+                self.send_message(chat_id, ack_text, reply_to_message_id=message_id)
+
+            new_analysis = None
+            if img_path and os.path.exists(img_path):
+                try:
+                    with open(img_path, "rb") as f:
+                        img_bytes = f.read()
+                    new_analysis = analyze_meal_image(img_bytes, caption=caption_text, timestamp=ts)
+                except Exception as img_err:
+                    print(f"⚠️ Reanalyzing image failed: {img_err}")
+
+            if not new_analysis or new_analysis.get("status") == "error":
+                if caption_text:
+                    try:
+                        new_analysis = analyze_quick_log_text(caption_text, timestamp=ts)
+                    except Exception as txt_err:
+                        print(f"⚠️ Quick log text fallback failed: {txt_err}")
+
+            if not new_analysis or new_analysis.get("status") == "error":
+                fail_msg = f"❌ Không thể phân tích lại bữa ăn ID {rec_id} do lỗi kết nối AI. Vui lòng thử lại sau ít phút!"
+                if chat_id:
+                    self.send_message(chat_id, fail_msg, reply_to_message_id=message_id)
+                return {"status": "error", "command": cmd, "record_id": rec_id}
+
+            # Update DB
+            cal = new_analysis.get("total_calories")
+            p = new_analysis.get("protein_g")
+            c_val = new_analysis.get("carb_g")
+            f_val = new_analysis.get("fat_g")
+            alc_u = new_analysis.get("alcohol_units", 0.0)
+            alc_desc = new_analysis.get("alcohol_description", "Không có cồn")
+            risk = new_analysis.get("sleep_risk_assessment", "")
+            summary = new_analysis.get("short_summary", "")
+            raw_ai = new_analysis.get("raw_ai_response", "")
+            dishes_json = json.dumps(new_analysis.get("dishes", [caption_text]), ensure_ascii=False)
+
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("""
+                    UPDATE nutrition_logs
+                    SET total_calories = ?,
+                        protein_g = ?,
+                        carb_g = ?,
+                        fat_g = ?,
+                        alcohol_units = ?,
+                        alcohol_description = ?,
+                        sleep_risk_assessment = ?,
+                        short_summary = ?,
+                        raw_ai_response = ?,
+                        dishes = ?
+                    WHERE id = ?
+                """, (cal, p, c_val, f_val, alc_u, alc_desc, risk, summary, raw_ai, dishes_json, rec_id))
+                conn.commit()
+
+            reply_text = build_telegram_nutrition_reply(new_analysis)
+            full_reply = f"🔄 **KẾT QUẢ PHÂN TÍCH LẠI BỮA ĂN (ID: {rec_id}):**\n\n{reply_text}"
+            if chat_id:
+                self.send_message(chat_id, full_reply, reply_to_message_id=message_id)
+            return {"status": "success", "command": cmd, "record_id": rec_id, "reply": full_reply}
 
         return {"status": "ignored", "reason": "unknown_command"}
 
@@ -480,6 +618,9 @@ def process_single_image_file(image_path: str, caption: Optional[str] = None) ->
 
     img_bytes = path.read_bytes()
     analysis = analyze_meal_image(img_bytes, caption=caption)
+    if analysis.get("status") == "error":
+        return analysis
+
     analysis["image_path"] = str(path.resolve())
     
     init_db()
@@ -990,6 +1131,10 @@ def build_telegram_nutrition_reply(analysis: Dict[str, Any]) -> str:
         "🥗 NHẬT KÝ BỮA PHỤ PHỤC HỒI"
     ]:
         clean_summary = clean_summary.replace(title, "").strip()
+
+    fallback_notice = analysis.get("fallback_notice")
+    if fallback_notice and fallback_notice not in clean_summary:
+        clean_summary = f"{fallback_notice}\n\n{clean_summary}"
 
     risk_section = format_sleep_risk(analysis)
 

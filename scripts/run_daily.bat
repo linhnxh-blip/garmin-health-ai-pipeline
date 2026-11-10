@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-cd /d "C:\Users\linhn\.gemini\antigravity-ide\scratch\garmin-health-ai-pipeline"
+cd /d "%~dp0.."
 
 if not exist "logs" mkdir "logs"
 

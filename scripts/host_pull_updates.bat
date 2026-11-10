@@ -17,6 +17,14 @@ if %errorlevel% neq 0 (
 )
 
 echo.
+echo 💾 Khôi phục & đồng bộ SQLite Database từ backups/db_backup.sqlite3...
+if exist backups\db_backup.sqlite3 (
+    powershell -ExecutionPolicy Bypass -File .\restore_database.ps1
+) else (
+    echo ℹ️ Không tìm thấy backups\db_backup.sqlite3, giữ nguyên DB hiện tại.
+)
+
+echo.
 echo 🧪 Running quick pytest verification...
 python -m pytest
 
