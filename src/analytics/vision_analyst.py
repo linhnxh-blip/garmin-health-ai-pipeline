@@ -65,8 +65,10 @@ Nhiệm vụ của bạn là nhận diện và phân tích toàn diện ảnh ch
 """
 
 VISION_MODELS = [
-    "gemini-2.5-flash",  # Tuyến 1: Chính thức Cloud (tốc độ nhanh nhất, tối ưu chi phí)
-    "gemini-3.8-flash",  # Dự phòng Cloud
+    "gemini-3.5-flash",       # Tuyến 1: Chính thức Cloud (nhanh, ổn định nhất hiện tại)
+    "gemini-3.5-flash-lite",  # Tốc độ phản hồi cực nhanh (< 1s), ổn định
+    "gemini-3.8-flash",       # Dự phòng Cloud
+    "gemini-3.1-flash-lite",  # Dự phòng Cloud bổ sung
 ]
 
 
@@ -87,7 +89,7 @@ def create_genai_client(api_key: str):
         custom_http_client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=20.0,
-                read=30.0,
+                read=60.0,
                 write=20.0,
                 pool=10.0
             ),
@@ -96,7 +98,7 @@ def create_genai_client(api_key: str):
         )
         http_opts = types.HttpOptions(
             httpx_client=custom_http_client,
-            timeout=30000
+            timeout=60000
         )
         return genai.Client(api_key=api_key, http_options=http_opts)
     except Exception as init_err:
@@ -600,10 +602,18 @@ def analyze_meal_image(
             image_part = types.Part.from_bytes(data=img_jpeg_bytes, mime_type="image/jpeg")
 
             vision_env_model = (getattr(settings, "gemini_vision_model", None) or os.getenv("GEMINI_VISION_MODEL") or getattr(settings, "gemini_model", None) or "").strip()
-            deprecated_models = {"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"}
-            raw_candidates = list(VISION_MODELS)
+            deprecated_models = {
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-3.6-flash",
+                "gemini-3.1-pro-preview",
+            }
+            raw_candidates = [m for m in VISION_MODELS if m not in deprecated_models]
             if vision_env_model and vision_env_model not in deprecated_models and vision_env_model not in raw_candidates:
-                raw_candidates.append(vision_env_model)
+                raw_candidates.insert(0, vision_env_model)
             seen = set()
             models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
@@ -872,11 +882,22 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
 
         env_model = (getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL") or "").strip()
         default_candidates = [
-            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
             "gemini-3.8-flash",
+            "gemini-3.1-flash-lite",
         ]
-        deprecated_models = {"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"}
-        raw_candidates = ([env_model] if env_model and env_model not in deprecated_models else []) + default_candidates
+        deprecated_models = {
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-3.6-flash",
+            "gemini-3.1-pro-preview",
+        }
+        filtered_defaults = [m for m in default_candidates if m not in deprecated_models]
+        raw_candidates = ([env_model] if env_model and env_model not in deprecated_models else []) + filtered_defaults
         seen = set()
         models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 

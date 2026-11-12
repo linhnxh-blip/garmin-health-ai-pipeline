@@ -36,10 +36,10 @@ def test_analyze_quick_log_text_mock_mode(monkeypatch):
 
 
 def test_analyze_quick_log_text_retry_and_model_fallback(monkeypatch):
-    """Test 503 UNAVAILABLE retry logic and fallback to gemini-2.5-flash."""
+    """Test 503 UNAVAILABLE retry logic and fallback to gemini-3.5-flash-lite."""
     monkeypatch.setenv("MOCK_LLM", "false")
     monkeypatch.setenv("GEMINI_API_KEY", "fake_key_for_test")
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash")
 
     # Mock client and responses
     mock_client = MagicMock()
@@ -69,12 +69,12 @@ def test_analyze_quick_log_text_retry_and_model_fallback(monkeypatch):
     calls = []
     def fake_generate_content(model, contents, config):
         calls.append(model)
-        # gemini-2.5-flash (priority 1) fails with 503 on all 3 attempts
-        if model == "gemini-2.5-flash":
+        # gemini-3.5-flash (priority 1) fails with 503 on all attempts
+        if model == "gemini-3.5-flash":
             raise Exception("503 UNAVAILABLE: This model is currently experiencing high demand.")
-        # gemini-3.8-flash (priority 2 fallback) fails on first attempt with 503, succeeds on 2nd attempt
-        if model == "gemini-3.8-flash":
-            if calls.count("gemini-3.8-flash") == 1:
+        # gemini-3.5-flash-lite (priority 2 fallback) fails on first attempt with 503, succeeds on 2nd attempt
+        if model == "gemini-3.5-flash-lite":
+            if calls.count("gemini-3.5-flash-lite") == 1:
                 raise Exception("503 UNAVAILABLE: Temporary spike")
             return success_resp
         return success_resp
@@ -85,9 +85,9 @@ def test_analyze_quick_log_text_retry_and_model_fallback(monkeypatch):
          patch("time.sleep", side_effect=fake_sleep):
         res = analyze_quick_log_text("1 phở bò bắp", timestamp="2026-11-10 08:00:00")
 
-    # Verify model calls: 2 attempts on gemini-2.5-flash (attempt 1 + 1 retry), then 2 attempts on gemini-3.8-flash
-    assert calls.count("gemini-2.5-flash") == 2
-    assert calls.count("gemini-3.8-flash") == 2
+    # Verify model calls: 2 attempts on gemini-3.5-flash (attempt 1 + 1 retry), then 2 attempts on gemini-3.5-flash-lite
+    assert calls.count("gemini-3.5-flash") == 2
+    assert calls.count("gemini-3.5-flash-lite") == 2
     # Verify 1s backoff for 503 retry
     assert 1 in sleep_calls
 
@@ -447,8 +447,8 @@ def test_analyze_meal_image_404_skips_retry_switches_model(monkeypatch):
     calls = []
     def fake_generate_content(model, contents, config):
         calls.append(model)
-        if model == "gemini-2.5-flash":
-            raise Exception("404 NOT_FOUND: This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash")
+        if model == "gemini-3.5-flash":
+            raise Exception("404 NOT_FOUND: This model is no longer available. Please update your code to use gemini-3.5-flash-lite")
         return success_resp
 
     mock_client.models.generate_content.side_effect = fake_generate_content
@@ -462,9 +462,9 @@ def test_analyze_meal_image_404_skips_retry_switches_model(monkeypatch):
          patch("time.sleep", return_value=None):
         res = analyze_meal_image(img_bytes, caption="cơm gà")
 
-    # gemini-2.5-flash should only be attempted ONCE because 404 causes immediate break to next candidate
-    assert calls.count("gemini-2.5-flash") == 1
-    assert calls.count("gemini-3.8-flash") == 1
+    # gemini-3.5-flash should only be attempted ONCE because 404 causes immediate break to next candidate
+    assert calls.count("gemini-3.5-flash") == 1
+    assert calls.count("gemini-3.5-flash-lite") == 1
     assert res["total_calories"] == 500
     assert res["dishes"] == ["Cơm gà luộc"]
 

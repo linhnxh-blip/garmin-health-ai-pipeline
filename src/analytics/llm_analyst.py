@@ -170,11 +170,22 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
 
     # Candidate models in order of priority & quota availability
     default_candidates = [
-        "gemini-2.5-flash",
-        "gemini-3.8-flash",
+        "gemini-3.5-flash",       # Tuyến 1: Nhanh, chuẩn xác, ổn định nhất hiện tại
+        "gemini-3.5-flash-lite",  # Tốc độ cực nhanh (< 1s), ổn định
+        "gemini-3.8-flash",       # Dự phòng Cloud thế hệ mới
+        "gemini-3.1-flash-lite",  # Dự phòng Cloud bổ sung
     ]
+    deprecated_models = {
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-3.6-flash",
+        "gemini-3.1-pro-preview",
+    }
     env_model = (settings.gemini_model or "").strip()
-    raw_candidates = ([env_model] if env_model else []) + default_candidates
+    raw_candidates = ([env_model] if env_model and env_model not in deprecated_models else []) + [m for m in default_candidates if m not in deprecated_models]
     seen = set()
     models_to_try = [m.replace("models/", "").strip() for m in raw_candidates if m and not (m in seen or seen.add(m))]
 
@@ -186,8 +197,8 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
     
     last_err = None
     for model in models_to_try:
-        max_retries = 3
-        delay = 2
+        max_retries = 2
+        delay = 1
         for attempt in range(1, max_retries + 1):
             try:
                 response = client.models.generate_content(
@@ -222,9 +233,9 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
                     print(f"🔄 Model '{model}' hit 429 Quota Exhausted. Skipping retries for '{model}' and switching to next model...")
                     break
 
-                # If unavailable (503 / 404), fallback to next model immediately
-                if "404" in err_str or "not found" in err_lower or "503" in err_str or "unavailable" in err_lower:
-                    print(f"🔄 Model '{model}' unavailable/overloaded (503/404). Switching to next candidate model...")
+                # If unavailable (503 / 504 / 404), fallback to next model immediately
+                if "404" in err_str or "not found" in err_lower or "503" in err_str or "unavailable" in err_lower or "504" in err_str or "deadline_exceeded" in err_lower:
+                    print(f"🔄 Model '{model}' unavailable/overloaded (503/504/404). Switching to next candidate model...")
                     break
 
                 # For transient network errors, retry up to max_retries
@@ -264,6 +275,43 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens
     }
+
+def call_local_ollama_report(system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+    """Fallback to Local Ollama LLM (ROG Ally X / Localhost) when Cloud LLMs are unavailable."""
+    import requests
+    import os
+
+    local_url = (getattr(settings, "local_llm_url", None) or os.getenv("LOCAL_LLM_URL") or "http://localhost:11434").rstrip("/")
+    model_name = (getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b").strip()
+
+    combined_prompt = f"[SYSTEM INSTRUCTION]\n{system_prompt}\n\n[USER REQUEST]\n{user_prompt}"
+
+    payload = {
+        "model": model_name,
+        "prompt": combined_prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.3
+        }
+    }
+
+    try:
+        print(f"🔄 Đang kết nối Local Ollama LLM ({model_name} tại {local_url}) để sinh báo cáo sinh lý học...")
+        res = requests.post(f"{local_url}/api/generate", json=payload, timeout=90)
+        if res.status_code == 200:
+            raw_text = res.json().get("response", "").strip()
+            # Loại bỏ suy luận <think>...</think> nếu có
+            clean_text = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+            if clean_text:
+                return {
+                    "report_markdown": clean_text,
+                    "model_used": f"ollama ({model_name})",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0
+                }
+    except Exception as exc:
+        print(f"⚠️ Local Ollama LLM request failed ({local_url}, {model_name}): {exc}")
+    return None
 
 def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = False) -> Dict[str, Any]:
     """Generate structured physiological report offline (or for Mock LLM mode) without invoking API tokens."""
@@ -749,8 +797,14 @@ def generate_health_analysis(
             else:
                 res = call_openai(system_prompt, user_prompt)
         except Exception as fallback_err:
-            print(f"⚠️ Both LLM Providers failed due to quota/credentials ({fallback_err}). Generating structured physiological report...")
-            res = _generate_structured_report(baseline_data, is_mock=False)
+            print(f"⚠️ Cloud LLM Providers failed ({fallback_err}). Kích hoạt Tuyến Fallback sang Local Ollama LLM...")
+            ollama_res = call_local_ollama_report(system_prompt, user_prompt)
+            if ollama_res:
+                print("✅ Đã sinh báo cáo sinh lý học thành công qua Local Ollama LLM (ROG Ally X)!")
+                res = ollama_res
+            else:
+                print("⚠️ Local Ollama LLM không phản hồi. Generating structured physiological report...")
+                res = _generate_structured_report(baseline_data, is_mock=False)
 
     res["raw_prompt"] = raw_prompt
 
