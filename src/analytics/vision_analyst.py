@@ -236,10 +236,14 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
 
     for base_url in endpoints:
         try:
+            t0 = time.perf_counter()
             res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(3.0, 60))
+            elapsed = round(time.perf_counter() - t0, 2)
             if res.status_code == 200:
                 res_data = res.json()
                 raw_response = res_data.get("response", "").strip()
+                p_tokens = res_data.get("prompt_eval_count") or 0
+                c_tokens = res_data.get("eval_count") or 0
                 if raw_response:
                     parsed = parse_qwen_json(raw_response)
                     cal = float(parsed.get("calories") or 0.0)
@@ -267,7 +271,12 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
                         "alcohol_units": alc_units,
                         "alcohol_description": "Không có cồn" if alc_units == 0 else f"{alc_g}g cồn (~{alc_units} units)",
                         "sleep_risk_assessment": parsed.get("recovery_impact") or f"✅ Đánh giá Dinh dưỡng & Phục hồi từ Local Ollama ({model_name} via {base_url}).",
-                        "short_summary": parsed.get("summary") or f"Đã ghi nhận (Local Ollama): {meal_text} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g)."
+                        "short_summary": parsed.get("summary") or f"Đã ghi nhận (Local Ollama): {meal_text} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g).",
+                        "model_used": f"ollama ({model_name}) via {base_url}",
+                        "latency_seconds": elapsed,
+                        "prompt_tokens": p_tokens,
+                        "completion_tokens": c_tokens,
+                        "total_tokens": p_tokens + c_tokens
                     }
         except Exception as err:
             print(f"⚠️ Local Ollama LLM fallback exception ({base_url}, model '{model_name}'): {err}")
@@ -439,13 +448,25 @@ def call_local_qwen_vision_sync(image_bytes: bytes, caption: str = "") -> Option
 
     for local_url in endpoints:
         try:
+            t0 = time.perf_counter()
             res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
+            elapsed = round(time.perf_counter() - t0, 2)
             if res.status_code == 200:
-                raw_response = res.json().get("response", "{}")
+                res_data = res.json()
+                raw_response = res_data.get("response", "{}")
+                p_tokens = res_data.get("prompt_eval_count") or 0
+                c_tokens = res_data.get("eval_count") or 0
                 if isinstance(raw_response, dict):
-                    return _sanitize_local_vision_output(raw_response)
-                parsed = parse_qwen_json(raw_response)
-                return _sanitize_local_vision_output(parsed)
+                    result = _sanitize_local_vision_output(raw_response)
+                else:
+                    parsed = parse_qwen_json(raw_response)
+                    result = _sanitize_local_vision_output(parsed)
+                result["model_used"] = f"ollama ({model_name}) via {local_url}"
+                result["latency_seconds"] = elapsed
+                result["prompt_tokens"] = p_tokens
+                result["completion_tokens"] = c_tokens
+                result["total_tokens"] = p_tokens + c_tokens
+                return result
         except Exception as exc:
             print(f"⚠️ Local LLM vision sync request failed ({local_url}, {model_name}): {exc}. Trying next endpoint...")
     return None
@@ -615,6 +636,10 @@ def analyze_meal_image(
 
     last_err = None
     ai_raw_text = ""
+    model_used = None
+    latency_seconds = 0.0
+    p_tokens = 0
+    c_tokens = 0
 
     def _safe_print(msg: str):
         try:
@@ -651,6 +676,7 @@ def analyze_meal_image(
                 model_succeeded = False
                 for attempt in range(1, max_retries + 1):
                     try:
+                        t0 = time.perf_counter()
                         response = client.models.generate_content(
                             model=model,
                             contents=[image_part, user_text],
@@ -660,8 +686,14 @@ def analyze_meal_image(
                                 response_mime_type="application/json"
                             )
                         )
+                        elapsed = round(time.perf_counter() - t0, 2)
                         ai_raw_text = (response.text or "").strip()
                         if ai_raw_text:
+                            model_used = f"gemini ({model})"
+                            latency_seconds = elapsed
+                            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                                p_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                                c_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
                             _safe_print(f"✅ Gemini Vision analysis succeeded using model '{model}' (attempt {attempt}/{max_retries})")
                             model_succeeded = True
                             break
@@ -693,10 +725,13 @@ def analyze_meal_image(
 
     if not ai_raw_text:
         # Try OpenAI Vision as secondary fallback if API key is present
+        t0 = time.perf_counter()
         openai_res = analyze_meal_image_openai(img_jpeg_bytes, user_text)
         if openai_res:
             _safe_print("✅ Vision analysis succeeded using OpenAI Vision fallback (gpt-4o-mini)")
             ai_raw_text = openai_res.strip()
+            model_used = "openai (gpt-4o-mini)"
+            latency_seconds = round(time.perf_counter() - t0, 2)
 
     if not ai_raw_text:
         clean_caption = (caption or "").strip()
@@ -776,8 +811,18 @@ def analyze_meal_image(
                 "short_summary": f"Đã ghi nhận [AI Vision: Local Ally X ({local_v_model})]: {summary} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g).",
                 "raw_ai_response": json.dumps(local_vision_data, ensure_ascii=False),
                 "fallback_notice": fallback_notice,
-                "is_local_vision": True
+                "is_local_vision": True,
+                "model_used": local_vision_data.get("model_used") or f"ollama ({local_v_model})",
+                "latency_seconds": local_vision_data.get("latency_seconds") or 0.0,
+                "prompt_tokens": local_vision_data.get("prompt_tokens") or 0,
+                "completion_tokens": local_vision_data.get("completion_tokens") or 0,
+                "total_tokens": (local_vision_data.get("prompt_tokens") or 0) + (local_vision_data.get("completion_tokens") or 0)
             }
+            parsed["model_used"] = parsed.get("model_used") or model_used or "gemini (gemini-2.5-flash)"
+            parsed["latency_seconds"] = parsed.get("latency_seconds") or latency_seconds or 0.0
+            parsed["prompt_tokens"] = parsed.get("prompt_tokens") or p_tokens or 0
+            parsed["completion_tokens"] = parsed.get("completion_tokens") or c_tokens or 0
+            parsed["total_tokens"] = parsed["prompt_tokens"] + parsed["completion_tokens"]
             return sanitize_vision_analysis(parsed, date_str, ts_str)
 
         # Cả Cloud Vision lẫn Local Vision đều lỗi và KHÔNG có caption
@@ -848,6 +893,12 @@ def analyze_meal_image(
         parsed["short_summary"] = (
             f"Đã ghi nhận: {dishes_str} (~{parsed['total_calories']} kcal | P: {parsed['protein_g']}g | C: {parsed['carb_g']}g | F: {parsed['fat_g']}g)."
         )
+
+    parsed["model_used"] = parsed.get("model_used") or model_used or "gemini (gemini-2.5-flash)"
+    parsed["latency_seconds"] = parsed.get("latency_seconds") or latency_seconds or 0.0
+    parsed["prompt_tokens"] = parsed.get("prompt_tokens") or p_tokens or 0
+    parsed["completion_tokens"] = parsed.get("completion_tokens") or c_tokens or 0
+    parsed["total_tokens"] = parsed["prompt_tokens"] + parsed["completion_tokens"]
 
     return sanitize_vision_analysis(parsed, date_str, ts_str)
 
@@ -932,6 +983,9 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
         ai_raw_text = ""
         last_err = None
         model_used = None
+        latency_seconds = 0.0
+        p_tokens = 0
+        c_tokens = 0
 
         for model in models_to_try:
             max_retries = 2
@@ -939,6 +993,7 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
 
             for attempt in range(1, max_retries + 1):
                 try:
+                    t0 = time.perf_counter()
                     response = client.models.generate_content(
                         model=model,
                         contents=[user_prompt],
@@ -948,10 +1003,15 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
                             response_mime_type="application/json"
                         )
                     )
+                    elapsed = round(time.perf_counter() - t0, 2)
                     text_content = (response.text or "").strip()
                     if text_content:
                         ai_raw_text = text_content
-                        model_used = model
+                        model_used = f"gemini ({model})"
+                        latency_seconds = elapsed
+                        if hasattr(response, "usage_metadata") and response.usage_metadata:
+                            p_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                            c_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
                         model_succeeded = True
                         print(f"✅ Quick Log nutrition estimation succeeded using model '{model}' (attempt {attempt}/{max_retries})")
                         break
@@ -978,10 +1038,13 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
                 break
 
         if not ai_raw_text:
+            t0 = time.perf_counter()
             openai_res = analyze_quick_log_text_openai(user_prompt)
+            elapsed = round(time.perf_counter() - t0, 2)
             if openai_res:
                 ai_raw_text = openai_res.strip()
-                model_used = "openai"
+                model_used = "openai (gpt-4o-mini)"
+                latency_seconds = elapsed
                 print("✅ Quick Log nutrition estimation succeeded using OpenAI fallback (gpt-4o-mini)")
 
         parsed = None
@@ -1038,6 +1101,11 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
                     f"Đã ghi nhận (Quick Log): {description_text} "
                     f"(~{parsed['total_calories']} kcal | P: {parsed['protein_g']}g | C: {parsed['carb_g']}g | F: {parsed['fat_g']}g)."
                 )
+            parsed["model_used"] = parsed.get("model_used") or model_used or "gemini (gemini-2.5-flash)"
+            parsed["latency_seconds"] = parsed.get("latency_seconds") or latency_seconds or 0.0
+            parsed["prompt_tokens"] = parsed.get("prompt_tokens") or p_tokens or 0
+            parsed["completion_tokens"] = parsed.get("completion_tokens") or c_tokens or 0
+            parsed["total_tokens"] = parsed["prompt_tokens"] + parsed["completion_tokens"]
             return sanitize_vision_analysis(parsed, date_str, ts_str)
 
         print(f"⚠️ Quick Log using fallback parsed due to AI failure. Last error: {last_err}")

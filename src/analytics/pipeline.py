@@ -215,13 +215,20 @@ def run_health_pipeline(
 
         if send_telegram:
             from src.delivery.telegram_bot import send_multi_section_report
-            from src.analytics.prompt_engine import generate_telegram_card_fallback
+            from src.analytics.prompt_engine import generate_telegram_card_fallback, format_ai_metadata_footer
             from config.settings import settings
             card_text = analysis_res.get("telegram_card")
             if not card_text:
                 card_text = generate_telegram_card_fallback(baseline_data)
             report_link = f"{settings.base_web_url}/report/{date_str}/{r_type}"
-            telegram_msg = f"{card_text}\n\n📄 Xem phân tích chi tiết: {report_link}"
+            ai_footer = format_ai_metadata_footer(
+                model_used=analysis_res.get("model_used"),
+                latency_seconds=analysis_res.get("latency_seconds"),
+                prompt_tokens=analysis_res.get("prompt_tokens"),
+                completion_tokens=analysis_res.get("completion_tokens"),
+                for_telegram=True
+            )
+            telegram_msg = f"{card_text}\n\n📄 Xem phân tích chi tiết: {report_link}\n{ai_footer}"
             send_multi_section_report([telegram_msg])
             analysis_res["sent_telegram"] = True
 

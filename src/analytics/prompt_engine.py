@@ -2742,5 +2742,109 @@ def extract_report_and_telegram_card(raw_output: str, baseline_data: Optional[Di
     return full_report, telegram_card
 
 
+def normalize_ai_engine_name(raw_name: Optional[str]) -> str:
+    """Standardize AI model names into clear, professional labels indicating Cloud, Local PC, or Local Ally X."""
+    if not raw_name:
+        return "AI Engine (Auto)"
+    s = str(raw_name).strip()
+    s_lower = s.lower()
+
+    # Cloud Gemini
+    if "gemini" in s_lower:
+        m_name = ""
+        if "(" in s and ")" in s:
+            m_name = s.split("(")[1].split(")")[0].strip()
+        else:
+            m_name = s
+        m_name = m_name.replace("models/", "").strip()
+        if "2.5-flash" in m_name:
+            return "Google Gemini 2.5 Flash (Cloud)"
+        elif "3.5-flash-lite" in m_name:
+            return "Google Gemini 3.5 Flash-Lite (Cloud)"
+        elif "3.5-flash" in m_name:
+            return "Google Gemini 3.5 Flash (Cloud)"
+        elif "3.8-flash" in m_name:
+            return "Google Gemini 3.8 Flash (Cloud)"
+        elif "3.1-flash" in m_name:
+            return "Google Gemini 3.1 Flash-Lite (Cloud)"
+        return f"Google Gemini ({m_name}) (Cloud)"
+
+    # OpenAI
+    if "openai" in s_lower or "gpt" in s_lower:
+        return "OpenAI GPT-4o Mini (Cloud)"
+
+    # Local Ollama / Vision
+    if any(kw in s_lower for kw in ["ollama", "local", "qwen", "llava"]):
+        is_pc = any(kw in s_lower for kw in ["100.", "192.168", "pc", "tailscale"]) and not any(kw in s_lower for kw in ["localhost", "127.0.0.1"])
+        device = "Local PC GPU" if is_pc else "Local Ally X"
+        m_str = "qwen2.5:7b"
+        if "qwen3-vl" in s_lower:
+            m_str = "qwen3-vl:8b"
+        elif "qwen2.5" in s_lower:
+            m_str = "qwen2.5:7b"
+        elif "llava" in s_lower:
+            m_str = "llava:7b"
+        elif "(" in s and ")" in s:
+            m_str = s.split("(")[1].split(")")[0].strip()
+
+        via_str = " via Tailscale" if is_pc else ""
+        return f"{device} ({m_str}{via_str})"
+
+    if any(kw in s_lower for kw in ["offline", "deterministic", "rule"]):
+        return "Garmin Health Engine (Deterministic Offline)"
+
+    if "mock" in s_lower:
+        return "Garmin Health Engine (Mock Mode)"
+
+    return s
+
+
+def format_ai_metadata_footer(
+    model_used: Optional[str] = None,
+    latency_seconds: Optional[float] = None,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+    for_telegram: bool = True
+) -> str:
+    """Format professional AI execution metadata (Engine, Latency, Token Usage)
+    for Telegram messages or Markdown reports.
+    """
+    engine_name = normalize_ai_engine_name(model_used)
+
+    lat_val = float(latency_seconds) if latency_seconds is not None else 0.0
+    lat_str = f"{lat_val:.2f}s" if lat_val > 0 else "< 0.1s"
+
+    p_tok = int(prompt_tokens or 0)
+    c_tok = int(completion_tokens or 0)
+    tot_tok = p_tok + c_tok
+
+    if tot_tok > 0:
+        if p_tok > 0 and c_tok > 0:
+            tok_str = f"{tot_tok:,} tokens (In: {p_tok:,}, Out: {c_tok:,})"
+        else:
+            tok_str = f"{tot_tok:,} tokens"
+    else:
+        if any(kw in engine_name for kw in ["Offline", "Deterministic", "Mock"]):
+            tok_str = "0 tokens (Rule-based)"
+        else:
+            tok_str = "N/A tokens"
+
+    if for_telegram:
+        return f"🤖 AI Engine: {engine_name} | ⏱️ {lat_str} | 🪙 {tok_str}"
+    else:
+        if p_tok > 0 and c_tok > 0:
+            md_tok = f"{tot_tok:,} tokens (Prompt: {p_tok:,} | Completion: {c_tok:,})"
+        else:
+            md_tok = tok_str
+        return (
+            f"---\n\n"
+            f"### ℹ️ Thông tin AI & Hiệu năng Xử lý:\n"
+            f"- **Mô hình AI:** {engine_name}\n"
+            f"- **Thời gian xử lý (Latency):** {lat_str}\n"
+            f"- **Token tiêu thụ:** {md_tok}"
+        )
+
+
+
 
 

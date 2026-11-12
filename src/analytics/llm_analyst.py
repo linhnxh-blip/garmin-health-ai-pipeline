@@ -201,6 +201,7 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         delay = 1
         for attempt in range(1, max_retries + 1):
             try:
+                t0 = time.perf_counter()
                 response = client.models.generate_content(
                     model=model,
                     contents=user_prompt,
@@ -209,6 +210,7 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
                         temperature=0.3
                     )
                 )
+                elapsed = round(time.perf_counter() - t0, 2)
                 report_markdown = _clean_markdown_response(response.text or "")
                 prompt_tokens = 0
                 completion_tokens = 0
@@ -220,7 +222,9 @@ def call_gemini(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
                     "report_markdown": report_markdown,
                     "model_used": f"gemini ({model})",
                     "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                    "latency_seconds": elapsed
                 }
             except Exception as exc:
                 last_err = exc
@@ -255,6 +259,7 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
     
     from openai import OpenAI
 
+    t0 = time.perf_counter()
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model_name,
@@ -264,6 +269,7 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         ],
         temperature=0.3
     )
+    elapsed = round(time.perf_counter() - t0, 2)
 
     report_markdown = response.choices[0].message.content or ""
     prompt_tokens = response.usage.prompt_tokens if response.usage else 0
@@ -273,13 +279,16 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         "report_markdown": report_markdown,
         "model_used": f"openai ({model_name})",
         "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "latency_seconds": elapsed
     }
 
 def call_local_ollama_report(system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
     """Fallback to Local Ollama LLM (PC GPU primary -> ROG Ally X local fallback) when Cloud LLMs are unavailable."""
     import requests
     import os
+    import re
 
     raw_urls = os.getenv("LOCAL_LLM_URL") or getattr(settings, "local_llm_url", None) or "http://localhost:11434"
     endpoints = [u.strip().rstrip("/") for u in str(raw_urls).split(",") if u.strip()] or ["http://localhost:11434"]
@@ -299,17 +308,24 @@ def call_local_ollama_report(system_prompt: str, user_prompt: str) -> Optional[D
     for local_url in endpoints:
         try:
             print(f"🔄 Đang kết nối Local Ollama LLM ({model_name} tại {local_url}) để sinh báo cáo sinh lý học...")
+            t0 = time.perf_counter()
             res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
+            elapsed = round(time.perf_counter() - t0, 2)
             if res.status_code == 200:
-                raw_text = res.json().get("response", "").strip()
+                res_data = res.json()
+                raw_text = res_data.get("response", "").strip()
                 # Loại bỏ suy luận <think>...</think> nếu có
                 clean_text = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+                prompt_tokens = res_data.get("prompt_eval_count") or 0
+                completion_tokens = res_data.get("eval_count") or 0
                 if clean_text:
                     return {
                         "report_markdown": clean_text,
                         "model_used": f"ollama ({model_name}) via {local_url}",
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                        "latency_seconds": elapsed
                     }
         except Exception as exc:
             print(f"⚠️ Local Ollama LLM request failed ({local_url}, {model_name}): {exc}. Trying next endpoint...")
@@ -662,7 +678,9 @@ def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = F
             "telegram_card": offline_card,
             "model_used": model_label,
             "prompt_tokens": 0,
-            "completion_tokens": 0
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "latency_seconds": 0.05
         }
     else:
         offline_report = (
@@ -707,7 +725,9 @@ def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = F
         "telegram_card": offline_card,
         "model_used": model_label,
         "prompt_tokens": 0,
-        "completion_tokens": 0
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "latency_seconds": 0.05
     }
 
 def generate_health_analysis(
@@ -820,6 +840,25 @@ def generate_health_analysis(
         res["report_markdown"] = clean_report_text(res["report_markdown"])
     if "telegram_card" in res and res["telegram_card"]:
         res["telegram_card"] = clean_report_text(res["telegram_card"])
+
+    # Append professional AI Metadata section to full report markdown if not already present
+    from src.analytics.prompt_engine import format_ai_metadata_footer
+    model_used = res.get("model_used")
+    lat_sec = res.get("latency_seconds")
+    p_tok = res.get("prompt_tokens", 0)
+    c_tok = res.get("completion_tokens", 0)
+    res["total_tokens"] = p_tok + c_tok
+
+    if "Thông tin AI & Hiệu năng Xử lý" not in (res.get("report_markdown") or ""):
+        md_footer = format_ai_metadata_footer(
+            model_used=model_used,
+            latency_seconds=lat_sec,
+            prompt_tokens=p_tok,
+            completion_tokens=c_tok,
+            for_telegram=False
+        )
+        if md_footer:
+            res["report_markdown"] = (res.get("report_markdown") or "").rstrip() + f"\n\n{md_footer}\n"
 
     return res
 

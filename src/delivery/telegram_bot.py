@@ -244,13 +244,20 @@ class TelegramMealBot:
                 export_report_to_file(today_str, analysis_res["report_markdown"])
 
                 # 4. Deliver Glanceable Summary Telegram Card
-                from src.analytics.prompt_engine import generate_telegram_card_fallback
+                from src.analytics.prompt_engine import generate_telegram_card_fallback, format_ai_metadata_footer
                 card_text = analysis_res.get("telegram_card")
                 if not card_text:
                     card_text = generate_telegram_card_fallback(baseline_data)
                 r_type = (baseline_data.get("report_type") or "morning").lower()
                 report_link = f"{settings.base_web_url}/report/{today_str}/{r_type}"
-                telegram_msg = f"{card_text}\n\n📄 Xem phân tích chi tiết: {report_link}"
+                ai_footer = format_ai_metadata_footer(
+                    model_used=analysis_res.get("model_used"),
+                    latency_seconds=analysis_res.get("latency_seconds"),
+                    prompt_tokens=analysis_res.get("prompt_tokens"),
+                    completion_tokens=analysis_res.get("completion_tokens"),
+                    for_telegram=True
+                )
+                telegram_msg = f"{card_text}\n\n📄 Xem phân tích chi tiết: {report_link}\n{ai_footer}"
                 send_multi_section_report([telegram_msg], chat_id=chat_id, bot_token=self.bot_token)
                 print(f"🎉 Async /report completed successfully for chat_id: {chat_id}")
             except Exception as exc:
@@ -1141,10 +1148,21 @@ def build_telegram_nutrition_reply(analysis: Dict[str, Any]) -> str:
     date_str = analysis.get("date") or datetime.now().strftime("%Y-%m-%d")
     progress_section = calculate_live_progress(date_str)
 
+    from src.analytics.prompt_engine import format_ai_metadata_footer
+    ai_footer = format_ai_metadata_footer(
+        model_used=analysis.get("model_used"),
+        latency_seconds=analysis.get("latency_seconds"),
+        prompt_tokens=analysis.get("prompt_tokens"),
+        completion_tokens=analysis.get("completion_tokens"),
+        for_telegram=True
+    )
+
     parts = [header, "", clean_summary]
     if risk_section:
         parts.extend(["", risk_section])
     parts.extend(["", progress_section])
+    if ai_footer:
+        parts.extend(["", ai_footer])
 
     return "\n".join(parts)
 
