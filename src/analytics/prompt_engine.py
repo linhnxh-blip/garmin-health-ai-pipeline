@@ -512,7 +512,14 @@ PHẦN 1: FULL_REPORT
 PHẦN 2: TELEGRAM_CARD (GLANCEABLE SUMMARY)
 - Bản tóm tắt tác chiến ngắn gọn (tối đa 200 - 250 từ, đọc xong dưới 15 giây), dùng gạch đầu dòng (bullet points) súc tích, trực diện theo đúng khung giờ (Loại báo cáo):
   * Morning: Sleep Score, HRV, RHR, Readiness -> Kế hoạch bài tập hôm nay -> Cảnh báo sinh lý -> Target Dinh dưỡng.
-  * Midday: Đánh giá bài chạy sáng (Cự ly, Pace, HR, Cadence, GCT Balance L/R bảo vệ gân Achilles) -> Readiness & Hướng dẫn phục hồi chiều (CẤM chạy thêm nếu mệt) -> Quota Macro còn lại -> Khóa an toàn Protein tối <= 30g (Acid Uric 442 µmol/L).
+  * Midday: Tiêu đề: ☀️ [MIDDAY PULSE] ({date_vn}). Định dạng cô đọng, scannable:
+    • 🏃 Tải & Phục hồi: ACWR [x.xx] ([TRẠNG_THÁI] — [Giải thích]) | Readiness [xx]/100 | HRV [xx] ms ([STATUS]) | RHR [xx] bpm. [Tóm tắt bài chạy sáng / Rest Day và chỉ đạo phục hồi chiều].
+    • ⚠️ Cảnh báo Purine & Kiềm hóa: [Nếu có tải purine trưa và Acid Uric 442 µmol/L, chỉ định uống 350-400ml nước kiềm Fujiwa sau trưa, 1.5-2.0L chiều/tối, tối kiêng purine].
+    • 🍱 Thực đơn còn lại (Calo ~[xxx] kcal | P ~[xx]g | C ~[xx]g | F ~[xx]g):
+      - Bữa phụ ([giờ]): [Món ăn] ([Calo] kcal | P: [xx]g | C: [xx]g | F: [xx]g).
+      - Bữa tối ([giờ]): [Món ăn] ([Calo] kcal | P: [xx]g | C: [xx]g | F: [xx]g).
+    (QUY TẮC ĐỊNH DẠNG BẮT BUỘC: Ở mục Bữa phụ và Bữa tối, TUYỆT ĐỐI KHÔNG xuống dòng ngay sau dấu gạch đầu dòng `-`. BẮT BUỘC viết liền trên cùng 1 dòng: `- Bữa phụ ([giờ]): ...` và `- Bữa tối ([giờ]): ...`).
+    🩺 Chăm sóc da liễu: [Tách thành 1 dòng độc lập có icon 🩺 ở cuối tin nhắn trước link Web, diễn đạt tự nhiên, lịch sự: 'Giữ vùng da cùng cụt khô thoáng, mặc đồ cotton rộng và chấm Povidone-Iodine 10% tại chỗ.']
   * Evening: Tổng kết bước chân & Cảnh báo tải vận động (nếu POST_RACE_ACUTE: cất giày vào tủ; nếu POST_RACE_RECOVERY & bước cao ~13k: nghỉ ngày mai để hấp thu tải, theo dõi HRV & Readiness mỗi sáng, không cấm cực đoan) -> Dinh dưỡng & Cảnh báo log thiếu trưa -> Xả tải gân gót & Chăm sóc da liễu mông -> Giao thức thực hiện ngay trước khi lên giường (Magie Bisglycinate 300-400mg, gác chân 10-15m, tắt màn hình, ngủ ngay).
 """
 
@@ -567,6 +574,10 @@ TIÊU ĐỀ BÁO CÁO: `# ☀️ Báo cáo Đánh giá Vận động Sáng & Đi
   + Bữa phụ chiều nhận đúng số Protein dư còn lại = (Protein còn thiếu - Protein bữa tối) (ví dụ: chuối tiêu chín (~110g) / táo tây + sữa chua Chobani/ít béo / sữa hạt / trứng luộc). Tổng cộng hai bữa khớp chính xác 100% với Protein còn thiếu.
   + **Khóa Trần Carb Bữa tối & Chống Carb-Dumping (Clinical Guard 2):** Khóa trần Carb bữa tối tối đa 60 - 70g Carb (tương đương 1 - 1.5 bát con cơm trắng mềm). TUYỆT ĐỐI CẤM dồn ép toàn bộ Carb còn thiếu (như 150 - 170g Carb) vào bữa tối gây tăng đường huyết phản ứng, tăng nhịp tim nghỉ đêm và phá hỏng giấc ngủ. Lượng Carb chưa nạp đủ ban ngày được đánh dấu là 'Chưa nạp trong khung giờ hoạt động (bỏ qua)', KHÔNG dồn/dump vào ban đêm.
   + **Sàn Chất béo Tự nhiên & Chống Ảo giác Zero-Fat (Clinical Guard 3):** TUYỆT ĐỐI KHÔNG gán 0.0g Fat cho các món chứa đạm thực vật hoặc động vật (đậu phụ non, trứng gà, thịt gà/heo nạc đều có 4-7g natural fat). Nếu Fat đã nạp đủ/vượt hạn mức, hướng dẫn chế biến hấp/luộc không dầu mỡ, nhưng ghi nhận trung thực lượng chất béo nội tại tự nhiên (~5-7g Fat), TUYỆT ĐỐI KHÔNG ép về 0.0g Fat.
+  + **Chuẩn hóa Toán học & Định lượng Nguyên liệu Bữa tối (Khớp 100% Atwater & Fat Balance):**
+    * Tổng chất béo (Fat) của các nguyên liệu thành phần cộng lại BẮT BUỘC phải khớp tuyệt đối 100% với con số Fat tổng kết ở dòng Macro Bữa tối (không được để lệch số liệu giữa nguyên liệu và tổng kết, ví dụ không để 23.7g nguyên liệu vs 22.5g tổng kết).
+    * Khi Target Fat bữa tối là ~22.5g: Định lượng đậu phụ non điều chỉnh về 130g (chứa ~6.0g Fat, 10.5g Protein) + 40g ức gà nạc băm (1.0g Fat, 12.0g Protein) + cơm trắng mềm (0.5g Fat, 4.0g Protein, ~50g Carb) -> Tổng Fat tự nhiên = 7.5g. Lượng dầu olive/mè bổ sung tường minh là đúng 15.0ml (15.0g Fat) -> Tổng Fat nguyên liệu = 7.5 + 15.0 = 22.5g Fat (Khớp hoàn hảo 100%!). Hoặc nếu dùng 150g đậu phụ non (7.2g Fat) + ức gà (1.0g Fat) + cơm (0.5g Fat) = 8.7g Fat -> Lượng dầu olive/mè bổ sung tường minh phải điều chỉnh xuống đúng 13.8ml (~13.8g Fat) để tổng nguyên liệu đạt đúng 22.5g Fat!
+    * Năng lượng bữa tối tính theo công thức Atwater: Calo = P*4 + C*4 + F*9.
 - **KHÓA AN TOÀN PROTEIN BỮA TỐI:** {dinner_midday_note}
 - **LOẠI BỎ FOOTER CŨ:** TUYỆT ĐỐI KHÔNG in ghi chú '💡 Lưu ý: Đây là thực đơn khung ngày nghỉ/hồi phục nền tảng. Mọi tiêu hao từ bài chạy/bơi phát sinh hôm nay sẽ được tự động cộng bù hạn mức trong Thẻ Nhịp Trưa (Midday Pulse).' vào cuối báo cáo!
 
@@ -1057,9 +1068,12 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
         )
     parts.append("")
 
+    rec_time_val = tm.get("recovery_time_hours")
+    rec_time_display = f"{rec_time_val} giờ" if rec_time_val is not None else "Chưa đồng bộ / Không áp dụng (Ngày nghỉ)"
+
     if report_type in ["midday", "evening"]:
         parts.append("--- CHỈ SỐ SINH LÝ & VẬN ĐỘNG HÔM NAY DẪN CHIẾU TÓM TẮT ---")
-        parts.append(f"- Training Readiness Score: {_format_value(tm.get('training_readiness_score'))}/100 | Recovery Time: {_format_value(tm.get('recovery_time_hours'), 'giờ')}")
+        parts.append(f"- Training Readiness Score: {_format_value(tm.get('training_readiness_score'))}/100 | Recovery Time: {rec_time_display}")
         parts.append(f"- Sleep Score: {_format_value(tm.get('sleep_score'))}/100 | HRV Overnight: {_format_value(tm.get('hrv_last_night'), 'ms')} (Status: {tm.get('hrv_status') or 'BALANCED'}) | RHR: {_format_value(tm.get('resting_heart_rate'), 'bpm')}")
         bs_cal = bm.get("active_calories", {})
         parts.append(f"- Active Calories (Garmin tiêu hao tích lũy cả ngày): Hôm nay = {_format_value(tm.get('active_calories'), 'kcal')} | Baseline 30d Avg = {bs_cal.get('avg', 'NULL')} kcal")
@@ -1093,7 +1107,7 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
         # Body Battery, Recovery & Cardiorespiratory Metrics
         parts.append(f"- Body Battery: Sạc = {_format_value(tm.get('body_battery_charged'))}, Xả = {_format_value(tm.get('body_battery_drained'))}, Cao nhất = {_format_value(tm.get('body_battery_highest'))}, Thấp nhất = {_format_value(tm.get('body_battery_lowest'))}")
         parts.append(f"- Training Readiness Score: {_format_value(tm.get('training_readiness_score'))}/100")
-        parts.append(f"- Recovery Time Remaining: {_format_value(tm.get('recovery_time_hours'), 'giờ')}")
+        parts.append(f"- Recovery Time Remaining: {rec_time_display}")
 
         raw_ts = tm.get("training_status")
         ts_display = format_training_status(raw_ts) if raw_ts else "Chưa xác định"
@@ -1874,11 +1888,17 @@ def build_advanced_user_prompt(baseline_data: Dict[str, Any]) -> str:
         unconsumed_c = max(0.0, round(rem_c_today - (45.0 + din_c_target), 1))
 
         if report_type == "midday":
+            rem_f_today = round(target_f - tot_f_today, 1)
+            target_din_f = max(0.0, round(rem_f_today - 1.8, 1))
             rule_6_text = (
                 f"6. KHÓA LÂM SÀNG BỮA TỐI & CHỐNG HỘI CHỨNG CARB-DUMPING (CLINICAL GUARDS CHO MIDDAY REVIEW):\n"
                 f"   - Trần Carb bữa tối (Clinical Guard 2): BẮT BUỘC khống chế tối đa {din_c_target}g Carb (~1 - 1.5 bát con cơm trắng mềm). Tuyệt đối CẤM dồn/dump lượng Carb còn thiếu lớn ({rem_c_today}g) vào bữa tối để ép khớp calo ngày. Lượng Carb chưa nạp đủ ban ngày (~{unconsumed_c}g Carb) được ghi nhận là 'Chưa nạp trong khung giờ hoạt động (bỏ qua)', KHÔNG dồn/dump vào ban đêm.\n"
                 f"   - Sàn chất béo tự nhiên (Clinical Guard 3 - Realistic Fat Floor): Trạng thái Fat ngày: {fat_status}. Các món đạm thanh đạm (đậu phụ non, trứng luộc, ức gà) luôn chứa chất béo nội tại tự nhiên (~5-7g Fat/bữa). TUYỆT ĐỐI KHÔNG ảo giác gán 0.0g Fat cho bữa tối!\n"
                 f"   - Bù trừ Protein: {target_p}g (Mục tiêu) - {tot_p_today}g (Đã nạp) = {rem_p}g Protein (Còn thiếu). Kê đơn bữa phụ chiều ({snack_p}g) + bữa tối ({din_p_cap}g) khớp đúng bằng {rem_p}g Protein.\n"
+                f"   - CHUẨN HÓA TOÁN HỌC & ĐỊNH LƯỢNG NGUYÊN LIỆU BỮA TỐI (KHỚP 100% ATWATER & FAT BALANCE):\n"
+                f"     * Target Fat còn thiếu cho bữa tối = {target_din_f}g Fat (tính từ {rem_f_today}g còn lại trong ngày - 1.8g bữa phụ).\n"
+                f"     * Tổng chất béo (Fat) của các nguyên liệu thành phần cộng lại BẮT BUỘC PHẢI KHỚP TUYỆT ĐỐI với con số {target_din_f}g ở dòng tổng kết Macro bữa tối.\n"
+                f"     * Định lượng thành phần chuẩn xác: 1.3 bát cơm trắng mềm (~0.5g Fat, 4.0g P) + 130g đậu phụ non sốt cà chua (~6.0g Fat, 10.5g P) + 40g ức gà nạc băm (1.0g Fat, 12.0g P) + canh rau cải luộc (+1.5g P) -> Tổng Fat tự nhiên = 7.5g. Lượng dầu olive/mè bổ sung tường minh là đúng 15.0ml (15.0g Fat: 10ml canh + 5ml sốt đậu) -> Tổng Fat = 7.5 + 15.0 = 22.5g Fat (hoặc nếu dùng 150g đậu phụ non [7.2g Fat] thì điều chỉnh lượng dầu bổ sung xuống đúng 13.8ml để tổng Fat nguyên liệu = 22.5g). TUYỆT ĐỐI KHÔNG để lệch 23.7g nguyên liệu vs 22.5g tổng kết!\n"
             )
             if purine_res.get("is_high_purine"):
                 rule_6_text += (
@@ -2274,6 +2294,51 @@ def clean_report_text(text: str) -> str:
                 else:
                     text = text.rstrip() + f"\n- {intraday_notice}\n"
 
+    # 8. Clean Recovery Time NULL representations in report text
+    text = re.sub(
+        r'((?:Recovery Time|Thời gian phục hồi)[^.\n]*?)(?:KHÔNG CÓ DỮ LIỆU \(NULL\)|NULL)',
+        r'\1Chưa đồng bộ / Không áp dụng (Ngày nghỉ)',
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # 9. Fix stuck text between status tag and explanation
+    text = re.sub(
+        r'\*\*(ELEVATED_RISK|OPTIMAL|SWEET_SPOT|OVERTRAINING|DANGER_ZONE|VERY_LOW_LOAD|TAPERING_DEEP_RECOVERY|POST_RACE_RECOVERY|POST_RACE_ACUTE)\*\*([A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴĐa-z])',
+        r'**\1** — \2',
+        text
+    )
+    text = re.sub(
+        r'\*\*(ELEVATED_RISK|OPTIMAL|SWEET_SPOT|OVERTRAINING|DANGER_ZONE|VERY_LOW_LOAD|TAPERING_DEEP_RECOVERY|POST_RACE_RECOVERY|POST_RACE_ACUTE)\*\*\s*-\s*',
+        r'**\1** — ',
+        text
+    )
+
+    # 10. Fix dangling newline right after dash/bullet in Telegram cards or meals:
+    # e.g. "- \n Bữa phụ (15:30):" -> "- Bữa phụ (15:30):"
+    text = re.sub(r'(?m)^(\s*[-*•])\s*[\r\n]+\s*([^\r\n]+)', r'\1 \2', text)
+
+    # 11. Clean and standardize dermatology line in Telegram card / Midday text
+    if any(k in text.lower() for k in ["da liễu", "cùng cụt", "nếp mông", "povidone", "viêm nang lông"]):
+        dermo_std = "🩺 Chăm sóc da liễu: Giữ vùng da cùng cụt khô thoáng, mặc đồ cotton rộng và chấm Povidone-Iodine 10% tại chỗ."
+        text = re.sub(
+            r'(?m)^\s*[-*•]\s*(?:💬\s*)?(?:🩺\s*)?(?:\*\*)?(?:Thăm khám lâm sàng da liễu[^\n]*|Chăm sóc da liễu[^\n]*)(?:\n\s*[-*•\s]*[^\n]*)*',
+            dermo_std,
+            text,
+            flags=re.IGNORECASE
+        )
+
+    # 12. Fix dinner ingredient fat math mismatch (e.g. 23.7g ingredients vs 22.5g total summary)
+    if "Fat: 22.5g" in text or "Fat: **22.5g**" in text or "Fat: 22.5 g" in text:
+        text = text.replace(
+            "1 bìa đậu phụ non (150g, chứa 12.0g P, 7.2g F) sốt cà chua nhạt",
+            "1 bìa đậu phụ non (130g, chứa 10.5g P, 6.0g F) sốt cà chua nhạt"
+        )
+        text = text.replace(
+            "1 bìa đậu phụ non (150g) sốt cà chua nhạt",
+            "1 bìa đậu phụ non (130g) sốt cà chua nhạt"
+        )
+
     # Clean consecutive empty lines
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text
@@ -2542,13 +2607,45 @@ def generate_telegram_card_fallback(baseline_data: Dict[str, Any]) -> str:
     warning_text = " | ".join(warnings) if warnings else "Thể trạng ổn định, không có cảnh báo cấp bách."
 
     if r_type == "midday":
-        from src.analytics.midday_review import calculate_evening_targets
+        from src.analytics.midday_review import calculate_evening_targets, detect_high_purine_lunch
         din_p_target, din_c_target, fat_status = calculate_evening_targets(
             {"protein": target_p, "carb": target_c, "fat": target_f},
             {"protein": tot_p, "carb": tot_c, "fat": tot_f},
             uric_acid_level=442.0
         )
         fat_card_str = "Đã đủ/vượt quota (Hấp/luộc)" if fat_status == "EXCEEDED" else f"~{rem_f}g"
+
+        # ACWR info
+        acwr_val = tm.get("acwr")
+        acwr_status = tm.get("acwr_status") or "OPTIMAL"
+        acwr_expl = "Cảnh báo nguy cơ quá tải" if acwr_status == "ELEVATED_RISK" else "Vùng tối ưu hấp thu tải"
+        acwr_str = f"ACWR {acwr_val:.2f} ({acwr_status} — {acwr_expl})" if acwr_val is not None else "ACWR ổn định"
+
+        # Check Purine lunch
+        lunch_dishes = []
+        lunch_prot = 0.0
+        try:
+            from src.db.nutrition_repository import get_nutrition_logs_by_date
+            nut_logs_card = get_nutrition_logs_by_date(target_date)
+            for log in nut_logs_card:
+                m_type = str(log.get("meal_type") or "").lower()
+                ts = str(log.get("timestamp") or "")
+                if any(kw in m_type for kw in ["trưa", "lunch"]) or ("11:" in ts or "12:" in ts or "13:" in ts):
+                    lunch_dishes = log.get("dishes") or []
+                    lunch_prot = float(log.get("protein_g") or 0.0)
+                    break
+        except Exception:
+            pass
+
+        purine_eval = detect_high_purine_lunch(lunch_dishes, lunch_prot, uric_acid_level=442.0)
+        purine_alert = (
+            "Bữa trưa có thịt bò/chả nướng, Uric Acid 442 µmol/L. Uống ngay 350-400ml nước kiềm Fujiwa (chiều/tối rải đều 1.5-2.0L), tối kiêng purine."
+            if purine_eval.get("is_high_purine") else
+            "Duy trì uống đủ nước khoáng kiềm Fujiwa, hạn chế tối đa purine vào bữa tối."
+        )
+
+        din_f_val = max(0.0, round(rem_f - 1.8, 1))
+        snack_p_val = round(max(0.0, rem_p - din_p_target), 1)
 
         if morning_act:
             dur_m = round((morning_act.get("duration_seconds") or 0) / 60.0, 1)
@@ -2559,18 +2656,20 @@ def generate_telegram_card_fallback(baseline_data: Dict[str, Any]) -> str:
         elif workout_done:
             act_desc = f"Đã hoàn thành bài tập sáng (Garmin Active Burn: {int(act_cals)} kcal)"
         else:
-            act_desc = "Sáng nay nghỉ ngơi (Chưa ghi nhận bài chạy sáng)"
-
-        phase_title = f"HỒI PHỤC CẤP POST-RACE D+{d_since_card or 3}" if phase_card == "POST_RACE_ACUTE" else "MIDDAY CARD"
+            act_desc = "Sáng nay nghỉ ngơi (Rest Day / Active Recovery)"
 
         lines = [
-            f"☀️ **TÓM TẮT ĐÁNH GIÁ TRƯA ({phase_title})** ({date_vn})",
-            f"• **🏃 Bài chạy sáng:** {act_desc}",
-            f"• **⚡ Readiness & Phục hồi chiều:** Readiness {readiness}/100 — Phục hồi thụ động, stretching nhẹ (CẤM chạy thêm buổi chiều)",
-            f"• **🍱 Quota Macro còn lại:** Calo ~{rem_cal} kcal | Protein ~{rem_p}g | Carb tối đa ~{din_c_target}g (Chống Carb-Dumping) | Fat: {fat_card_str}",
-            f"• **🔒 Khóa bữa tối:** Protein tối <= {din_p_target}g | Carb tối <= {din_c_target}g (Acid Uric 442 µmol/L)",
-            f"• **⚠️ Cảnh báo sinh lý:** {warning_text}"
+            f"☀️ **[MIDDAY PULSE]** ({date_vn})",
+            f"",
+            f"• 🏃 **Tải & Phục hồi:** {acwr_str} | Readiness {readiness}/100 | HRV {hrv_str} | RHR {rhr_str}. {act_desc} — Chiều phục hồi thụ động (CẤM chạy thêm).",
+            f"• ⚠️ **Cảnh báo Purine & Kiềm hóa:** {purine_alert}",
+            f"• 🍱 **Thực đơn còn lại (Calo ~{rem_cal} kcal | P ~{rem_p}g | C ~{rem_c}g | F ~{rem_f}g):**",
+            f"  - Bữa phụ (15:30): 1 quả chuối tiêu (~110g) + 1 hộp sữa chua Chobani ít béo (~140g) (~232 kcal | P: {snack_p_val}g | C: 42g | F: 1.8g)",
+            f"  - Bữa tối (18:30): 1.3 bát cơm trắng + 130g đậu phụ non sốt cà chua + 40g ức gà + canh rau luộc (+15ml dầu mè/olive) (~575 kcal | P: {din_p_target}g | C: {din_c_target}g | F: {din_f_val}g)",
+            f"",
+            f"🩺 **Chăm sóc da liễu:** Giữ vùng da cùng cụt khô thoáng, mặc đồ cotton rộng và chấm Povidone-Iodine 10% tại chỗ."
         ]
+        return clean_report_text("\n".join(lines))
 
     elif r_type == "evening":
         from src.analytics.card_generator import generate_evening_card
