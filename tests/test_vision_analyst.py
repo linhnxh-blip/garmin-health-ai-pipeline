@@ -481,6 +481,40 @@ def test_create_genai_client_ssl_custom_transport():
             assert isinstance(opts.httpx_client, httpx.Client)
 
 
+def test_multi_endpoint_local_llm_fallback(monkeypatch):
+    """Test that when primary PC Ollama is unreachable, it automatically tries secondary (Ally X)."""
+    from src.analytics.vision_analyst import call_local_ollama_fallback, get_local_llm_endpoints
+
+    monkeypatch.setenv("LOCAL_LLM_URL", "http://100.85.20.12:11434,http://localhost:11434")
+    endpoints = get_local_llm_endpoints()
+    assert len(endpoints) == 2
+    assert endpoints[0] == "http://100.85.20.12:11434"
+    assert endpoints[1] == "http://localhost:11434"
+
+    called_urls = []
+
+    def fake_post(url, json=None, timeout=None):
+        called_urls.append(url)
+        if "100.85.20.12" in url:
+            raise ConnectionError("Host unreachable")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "response": '{"calories": 350.0, "protein": 20.0, "carb": 40.0, "fat": 10.0, "summary": "Bánh cuốn thịt nạc", "recovery_impact": "Dễ tiêu hóa"}'
+        }
+        return mock_resp
+
+    with patch("requests.post", side_effect=fake_post):
+        res = call_local_ollama_fallback("Bánh cuốn thịt nạc")
+
+    assert res is not None
+    assert res["total_calories"] == 350
+    assert len(called_urls) == 2
+    assert "100.85.20.12:11434" in called_urls[0]
+    assert "localhost:11434" in called_urls[1]
+
+
+
 
 
 

@@ -277,11 +277,12 @@ def call_openai(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
     }
 
 def call_local_ollama_report(system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
-    """Fallback to Local Ollama LLM (ROG Ally X / Localhost) when Cloud LLMs are unavailable."""
+    """Fallback to Local Ollama LLM (PC GPU primary -> ROG Ally X local fallback) when Cloud LLMs are unavailable."""
     import requests
     import os
 
-    local_url = (getattr(settings, "local_llm_url", None) or os.getenv("LOCAL_LLM_URL") or "http://localhost:11434").rstrip("/")
+    raw_urls = os.getenv("LOCAL_LLM_URL") or getattr(settings, "local_llm_url", None) or "http://localhost:11434"
+    endpoints = [u.strip().rstrip("/") for u in str(raw_urls).split(",") if u.strip()] or ["http://localhost:11434"]
     model_name = (getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b").strip()
 
     combined_prompt = f"[SYSTEM INSTRUCTION]\n{system_prompt}\n\n[USER REQUEST]\n{user_prompt}"
@@ -295,22 +296,23 @@ def call_local_ollama_report(system_prompt: str, user_prompt: str) -> Optional[D
         }
     }
 
-    try:
-        print(f"🔄 Đang kết nối Local Ollama LLM ({model_name} tại {local_url}) để sinh báo cáo sinh lý học...")
-        res = requests.post(f"{local_url}/api/generate", json=payload, timeout=90)
-        if res.status_code == 200:
-            raw_text = res.json().get("response", "").strip()
-            # Loại bỏ suy luận <think>...</think> nếu có
-            clean_text = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
-            if clean_text:
-                return {
-                    "report_markdown": clean_text,
-                    "model_used": f"ollama ({model_name})",
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0
-                }
-    except Exception as exc:
-        print(f"⚠️ Local Ollama LLM request failed ({local_url}, {model_name}): {exc}")
+    for local_url in endpoints:
+        try:
+            print(f"🔄 Đang kết nối Local Ollama LLM ({model_name} tại {local_url}) để sinh báo cáo sinh lý học...")
+            res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
+            if res.status_code == 200:
+                raw_text = res.json().get("response", "").strip()
+                # Loại bỏ suy luận <think>...</think> nếu có
+                clean_text = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+                if clean_text:
+                    return {
+                        "report_markdown": clean_text,
+                        "model_used": f"ollama ({model_name}) via {local_url}",
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0
+                    }
+        except Exception as exc:
+            print(f"⚠️ Local Ollama LLM request failed ({local_url}, {model_name}): {exc}. Trying next endpoint...")
     return None
 
 def _generate_structured_report(baseline_data: Dict[str, Any], is_mock: bool = False) -> Dict[str, Any]:

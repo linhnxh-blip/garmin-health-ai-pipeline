@@ -1,6 +1,7 @@
 import json
 import io
 import time
+import os
 import base64
 import asyncio
 from typing import Dict, Any, Optional, Union
@@ -179,14 +180,28 @@ def analyze_quick_log_text_openai(user_text: str) -> Optional[str]:
     return None
 
 
+def get_local_llm_endpoints() -> list:
+    """Retrieve list of configured Local LLM / Ollama URLs for multi-tier fallback.
+    Accepts comma-separated URLs in settings.local_llm_url or LOCAL_LLM_URL env.
+    Example: 'http://100.x.y.z:11434,http://localhost:11434' (PC GPU primary -> Ally X local fallback).
+    """
+    raw_urls = (
+        os.getenv("LOCAL_LLM_URL")
+        or getattr(settings, "local_llm_url", None)
+        or "http://localhost:11434"
+    )
+    endpoints = [u.strip().rstrip("/") for u in str(raw_urls).split(",") if u.strip()]
+    return endpoints if endpoints else ["http://localhost:11434"]
+
+
 def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
-    """Fallback helper to analyze meal text using Local Ollama LLM (e.g. qwen2.5:7b on ROG Ally X)."""
+    """Fallback helper to analyze meal text using Local Ollama LLM (e.g. PC GPU or ROG Ally X)."""
     import requests
     import os
     import json
 
-    base_url = (getattr(settings, "local_llm_url", None) or os.getenv("LOCAL_LLM_URL") or "http://localhost:11434").rstrip("/")
     model_name = (getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b").strip()
+    endpoints = get_local_llm_endpoints()
 
     prompt = (
         "Bạn là chuyên gia dinh dưỡng thể thao hàng đầu Việt Nam. "
@@ -219,42 +234,43 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
         }
     }
 
-    try:
-        res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(5, 60))
-        if res.status_code == 200:
-            res_data = res.json()
-            raw_response = res_data.get("response", "").strip()
-            if raw_response:
-                parsed = parse_qwen_json(raw_response)
-                cal = float(parsed.get("calories") or 0.0)
-                p = float(parsed.get("protein") or 0.0)
-                c = float(parsed.get("carb") or 0.0)
-                f = float(parsed.get("fat") or 0.0)
-                alc_g = float(parsed.get("alcohol_grams") or 0.0)
-                alc_units = round(alc_g / 10.0, 1)
+    for base_url in endpoints:
+        try:
+            res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(3.0, 60))
+            if res.status_code == 200:
+                res_data = res.json()
+                raw_response = res_data.get("response", "").strip()
+                if raw_response:
+                    parsed = parse_qwen_json(raw_response)
+                    cal = float(parsed.get("calories") or 0.0)
+                    p = float(parsed.get("protein") or 0.0)
+                    c = float(parsed.get("carb") or 0.0)
+                    f = float(parsed.get("fat") or 0.0)
+                    alc_g = float(parsed.get("alcohol_grams") or 0.0)
+                    alc_units = round(alc_g / 10.0, 1)
 
-                dishes_raw = parsed.get("dishes")
-                if isinstance(dishes_raw, list) and dishes_raw:
-                    dishes_list = [str(d).strip() for d in dishes_raw if str(d).strip()]
-                elif isinstance(dishes_raw, str) and dishes_raw:
-                    dishes_list = [d.strip() for d in dishes_raw.split(",") if d.strip()]
-                else:
-                    dishes_list = [meal_text]
+                    dishes_raw = parsed.get("dishes")
+                    if isinstance(dishes_raw, list) and dishes_raw:
+                        dishes_list = [str(d).strip() for d in dishes_raw if str(d).strip()]
+                    elif isinstance(dishes_raw, str) and dishes_raw:
+                        dishes_list = [d.strip() for d in dishes_raw.split(",") if d.strip()]
+                    else:
+                        dishes_list = [meal_text]
 
-                return {
-                    "meal_type": "Bữa chính",
-                    "dishes": dishes_list,
-                    "total_calories": int(round(cal)),
-                    "protein_g": round(p, 1),
-                    "carb_g": round(c, 1),
-                    "fat_g": round(f, 1),
-                    "alcohol_units": alc_units,
-                    "alcohol_description": "Không có cồn" if alc_units == 0 else f"{alc_g}g cồn (~{alc_units} units)",
-                    "sleep_risk_assessment": parsed.get("recovery_impact") or "✅ Đánh giá Dinh dưỡng & Phục hồi từ Local Ollama.",
-                    "short_summary": parsed.get("summary") or f"Đã ghi nhận (Local Ollama): {meal_text} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g)."
-                }
-    except Exception as err:
-        print(f"⚠️ Local Ollama LLM fallback exception ({base_url}, model '{model_name}'): {err}")
+                    return {
+                        "meal_type": "Bữa chính",
+                        "dishes": dishes_list,
+                        "total_calories": int(round(cal)),
+                        "protein_g": round(p, 1),
+                        "carb_g": round(c, 1),
+                        "fat_g": round(f, 1),
+                        "alcohol_units": alc_units,
+                        "alcohol_description": "Không có cồn" if alc_units == 0 else f"{alc_g}g cồn (~{alc_units} units)",
+                        "sleep_risk_assessment": parsed.get("recovery_impact") or f"✅ Đánh giá Dinh dưỡng & Phục hồi từ Local Ollama ({model_name} via {base_url}).",
+                        "short_summary": parsed.get("summary") or f"Đã ghi nhận (Local Ollama): {meal_text} (~{int(round(cal))} kcal | P: {round(p, 1)}g | C: {round(c, 1)}g | F: {round(f, 1)}g)."
+                    }
+        except Exception as err:
+            print(f"⚠️ Local Ollama LLM fallback exception ({base_url}, model '{model_name}'): {err}")
     return None
 
 
@@ -336,11 +352,7 @@ async def call_local_qwen_vision(image_bytes: bytes, caption: str = "") -> dict:
         "}"
     )
 
-    local_url = (
-        getattr(settings, "local_llm_url", None)
-        or os.getenv("LOCAL_LLM_URL")
-        or "http://localhost:11434"
-    ).rstrip("/")
+    endpoints = get_local_llm_endpoints()
     model_name = (
         getattr(settings, "local_vision_model", None)
         or os.getenv("LOCAL_VISION_MODEL")
@@ -359,14 +371,19 @@ async def call_local_qwen_vision(image_bytes: bytes, caption: str = "") -> dict:
     }
 
     timeout_cfg = httpx.Timeout(connect=3.0, read=90.0, write=30.0, pool=5.0)
-    async with httpx.AsyncClient(timeout=timeout_cfg) as client:
-        res = await client.post(f"{local_url}/api/generate", json=payload)
-        res.raise_for_status()
-        raw_response = res.json().get("response", "{}")
-        if isinstance(raw_response, dict):
-            return _sanitize_local_vision_output(raw_response)
-        parsed = parse_qwen_json(raw_response)
-        return _sanitize_local_vision_output(parsed)
+    for local_url in endpoints:
+        try:
+            async with httpx.AsyncClient(timeout=timeout_cfg) as client:
+                res = await client.post(f"{local_url}/api/generate", json=payload)
+                res.raise_for_status()
+                raw_response = res.json().get("response", "{}")
+                if isinstance(raw_response, dict):
+                    return _sanitize_local_vision_output(raw_response)
+                parsed = parse_qwen_json(raw_response)
+                return _sanitize_local_vision_output(parsed)
+        except Exception as exc:
+            print(f"⚠️ Local LLM vision async request failed ({local_url}, {model_name}): {exc}. Trying next endpoint...")
+    return {}
 
 
 # Alias
@@ -375,15 +392,11 @@ call_local_llava_vision = call_local_qwen_vision
 
 
 def call_local_qwen_vision_sync(image_bytes: bytes, caption: str = "") -> Optional[Dict[str, Any]]:
-    """Synchronous helper for call_local_qwen_vision using requests."""
+    """Synchronous helper for call_local_qwen_vision using requests across configured endpoints."""
     import requests
     import os
 
-    local_url = (
-        getattr(settings, "local_llm_url", None)
-        or os.getenv("LOCAL_LLM_URL")
-        or "http://localhost:11434"
-    ).rstrip("/")
+    endpoints = get_local_llm_endpoints()
     model_name = (
         getattr(settings, "local_vision_model", None)
         or os.getenv("LOCAL_VISION_MODEL")
@@ -424,16 +437,17 @@ def call_local_qwen_vision_sync(image_bytes: bytes, caption: str = "") -> Option
         }
     }
 
-    try:
-        res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
-        if res.status_code == 200:
-            raw_response = res.json().get("response", "{}")
-            if isinstance(raw_response, dict):
-                return _sanitize_local_vision_output(raw_response)
-            parsed = parse_qwen_json(raw_response)
-            return _sanitize_local_vision_output(parsed)
-    except Exception as exc:
-        print(f"⚠️ Local LLM vision sync request failed ({local_url}, {model_name}): {exc}")
+    for local_url in endpoints:
+        try:
+            res = requests.post(f"{local_url}/api/generate", json=payload, timeout=(3.0, 90.0))
+            if res.status_code == 200:
+                raw_response = res.json().get("response", "{}")
+                if isinstance(raw_response, dict):
+                    return _sanitize_local_vision_output(raw_response)
+                parsed = parse_qwen_json(raw_response)
+                return _sanitize_local_vision_output(parsed)
+        except Exception as exc:
+            print(f"⚠️ Local LLM vision sync request failed ({local_url}, {model_name}): {exc}. Trying next endpoint...")
     return None
 
 # Alias
