@@ -67,3 +67,4 @@ def test_ask_chat_advisor_fallback_to_ollama(monkeypatch):
     assert "Phản hồi từ Local Ollama" in res["reply_text"]
     assert "Local PC GPU" in res["reply_text"]
     assert res["latency_seconds"] == 0.85
+

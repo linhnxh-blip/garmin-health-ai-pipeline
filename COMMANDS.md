@@ -41,15 +41,21 @@ Các lệnh được phân chia thành 2 nhóm chính: **Nhóm Đồng bộ (Syn
 
 ## 📱 2. Danh Mục Lệnh Telegram Bot (Command Handlers)
 
-Các lệnh thực thi trực tiếp bằng cách gõ vào khung chat với Telegram Bot.
+Các lệnh thực thi trực tiếp bằng cách gõ vào khung chat với Telegram Bot hoặc bấm chọn từ menu gợi ý (`/`):
 
 | Lệnh Telegram | Mục Đích Sử Dụng | Phản Hồi Từ Bot |
 | :--- | :--- | :--- |
-| `/report` hoặc `/baocao` | Chạy bù kéo dữ liệu mới nhất, sinh phân tích và bắn 4 thẻ tin nhắn báo cáo về chat. | Phản hồi instant `"🔄 Đang kéo dữ liệu..."` -> Chạy ngầm -> Bắn 4 thẻ Message Cards. |
-| `/sync` | Kéo dữ liệu Garmin & Omron mới nhất vào DB (không tạo báo cáo AI). | `"🔄 Đang đồng bộ..."` -> Phản hồi `"✅ Đã đồng bộ dữ liệu thành công!"`. |
-| `/status` | Xem tóm tắt nhanh chỉ số sinh lý (HRV, RHR, Sleep, Weight) & dinh dưỡng nạp hôm nay. | Thẻ tóm tắt thông số giấc ngủ, bước chân, cân nặng Omron và tổng Calo/Protein đã log. |
-| `/help` hoặc `/start` | Hiển thị menu hướng dẫn tất cả các lệnh được hỗ trợ và cách gửi ảnh bữa ăn. | Menu hướng dẫn định dạng Markdown hỗ trợ. |
-| 📸 **Gửi ảnh đồ ăn** | Gửi ảnh bữa ăn kèm caption (ví dụ: *"Ăn xong lúc 13h15"*) để Gemini Vision phân tích. | Thẻ bóc tách Calo, Protein, Carbs, Fat, đơn vị cồn và giờ ăn lưu vào SQLite. |
+| `/status` | 📊 Xem trạng thái sinh lý hôm nay, kèm tình trạng **AI Cluster & VRAM** (Cloud Gemini, Home PC GPU qua Tailscale, ROG Ally X). | Thẻ thông số giấc ngủ, bước chân, cân nặng, dinh dưỡng + Trạng thái & VRAM model của cụm AI. |
+| `/chat [câu hỏi]` | 💬 Trò chuyện, tham vấn thể lực & dinh dưỡng với Trợ lý AI Sinh lý học (có ngữ cảnh Garmin trực tiếp). | Phản hồi chuyên sâu dựa trên live metrics Garmin, tiền sử gân gót & Acid Uric + Telemetry token/latency. |
+| `/report` hoặc `/baocao` | 📈 Kéo dữ liệu mới nhất, sinh phân tích AI và gửi 4 thẻ báo cáo hoàn chỉnh về chat. | Phản hồi instant `"🔄 Đang kéo dữ liệu..."` -> Chạy ngầm -> Bắn 4 thẻ Message Cards. |
+| `/quick_log [mô tả]` | ✍️ Ghi nhanh bữa ăn/thức uống qua văn bản không cần chụp ảnh (VD: `/quick_log 1 phở bò 1 quẩy`). | Bóc tách Calories, Macros (P/C/F), tải Purine, thời gian ăn và tự động lưu DB. |
+| `/timkiem [từ khóa]` | 🔍 Tra cứu lịch sử dinh dưỡng, món ăn và bài tập thể thao trong cơ sở dữ liệu (VD: `/timkiem phở bò`). | Trả về danh sách ngày ăn món đó, calo/macro hoặc các bài chạy/tập Garmin tương ứng. |
+| `/sync` | 🔄 Kéo dữ liệu Garmin & Omron mới nhất vào DB (không tạo báo cáo AI). | `"🔄 Đang đồng bộ..."` -> Phản hồi `"✅ Đã đồng bộ dữ liệu thành công!"`. |
+| `/log_standard` | 🍱 Nạp nhanh ước lượng chuẩn Rest Day (2,150 kcal / 122g Protein) khi không kịp ghi từng bữa. | Thẻ tổng kết dinh dưỡng nạp chuẩn Rest Day + cập nhật tiến độ ngày. |
+| `/retry_last` | 🔁 Yêu cầu AI phân tích lại bản ghi bữa ăn gần nhất (hữu ích khi lần đầu bị rớt mạng hoặc calo mặc định). | Bắn lại thẻ phân tích chi tiết bữa ăn mới nhất vừa cập nhật. |
+| `/help` hoặc `/start` | ❓ Hiển thị menu hướng dẫn tất cả các lệnh được hỗ trợ và cách gửi ảnh bữa ăn. | Menu hướng dẫn định dạng Markdown đầy đủ. |
+| 💬 **Chat tự nhiên** | Nhắn tin văn bản bình thường (không cần dấu `/`), bot tự động nhận diện và phân tích trả lời. | Trả lời tự động như `/chat`, lấy dữ liệu Garmin hôm nay để tư vấn chuẩn xác. |
+| 📸 **Gửi ảnh đồ ăn** | Gửi ảnh bữa ăn kèm caption (ví dụ: *"Ăn lúc 12h30"*) để Vision AI phân tích. | Thẻ bóc tách Calo, Protein, Carbs, Fat, rủi ro phục hồi và lưu vào SQLite. |
 
 ---
 

@@ -371,3 +371,4 @@ def ask_chat_advisor(
         "completion_tokens": res.get("completion_tokens"),
         "total_tokens": res.get("total_tokens")
     }
+

@@ -349,15 +349,16 @@ class TelegramMealBot:
             reply = (
                 "👋 **GARMIN HEALTH AI BOT - MENU HƯỚNG DẪN**\n\n"
                 "📌 **Danh mục lệnh điều khiển:**\n"
-                "• `/report` | `/baocao`: Phân tích lại & bắn 4 thẻ báo cáo hoàn chỉnh mới nhất.\n"
-                "• `/sync`: Kéo dữ liệu Garmin/Omron mới nhất vào DB (không tạo báo cáo).\n"
-                "• `/status`: Trả về tóm tắt nhanh chỉ số sinh lý & dinh dưỡng hôm nay.\n"
-                "• `/retry_last`: Tự động phân tích lại bữa ăn gần nhất bị lỗi hoặc calo mặc định.\n"
-                "• `/log_standard`: Nạp nhanh ước lượng chuẩn Rest Day (2,150 kcal / 122g Protein).\n"
-                "• `/quick_log [mô tả]`: Ghi nhanh bữa ăn qua văn bản (VD: `/quick_log 1 phở bò bắp`).\n"
-                "• `/chat [câu hỏi]`: Trò chuyện trực tiếp với Trợ lý AI Sinh lý học & Phục hồi.\n"
-                "• `/help`: Hiển thị menu hướng dẫn này.\n\n"
-                "💬 **Trò chuyện tự nhiên**: Bạn có thể nhắn tin trực tiếp bất kỳ câu hỏi nào (không cần gõ lệnh), AI sẽ tự động phân tích dựa trên dữ liệu Garmin hôm nay để trả lời bạn ngay!\n\n"
+                "• `/status`: 📊 Xem trạng thái sức khỏe hôm nay, AI Cluster & VRAM.\n"
+                "• `/chat [câu hỏi]`: 💬 Trò chuyện & Hỏi đáp trực tiếp với AI Coach.\n"
+                "• `/report` | `/baocao`: 📈 Phân tích lại & bắn 4 thẻ báo cáo hoàn chỉnh mới nhất.\n"
+                "• `/quick_log [mô tả]`: ✍️ Ghi nhanh bữa ăn qua văn bản (VD: `/quick_log 1 phở bò bắp`).\n"
+                "• `/timkiem [từ khóa]`: 🔍 Tra cứu nhật ký bữa ăn & bài tập trong DB (VD: `/timkiem phở bò`).\n"
+                "• `/sync`: 🔄 Kéo dữ liệu Garmin/Omron mới nhất vào DB (không tạo báo cáo).\n"
+                "• `/log_standard`: 🍱 Nạp nhanh ước lượng chuẩn Rest Day (2,150 kcal / 122g Protein).\n"
+                "• `/retry_last`: 🔁 Tự động phân tích lại bữa ăn gần nhất bị lỗi hoặc calo mặc định.\n"
+                "• `/help`: ❓ Hiển thị menu hướng dẫn này.\n\n"
+                "💬 **Trò chuyện tự nhiên**: Bạn có thể nhắn tin trực tiếp bất kỳ câu hỏi nào (không cần gõ lệnh), AI sẽ phân tích dữ liệu Garmin hôm nay để trả lời ngay!\n\n"
                 "📸 **Gửi ảnh bữa ăn**: Chụp ảnh bữa ăn kèm chú thích để tự động bóc tách Macros & Calo vào DB."
             )
             if chat_id:
@@ -373,6 +374,14 @@ class TelegramMealBot:
                     self.send_message(chat_id, msg_prompt, reply_to_message_id=message_id)
                 return {"status": "prompt", "command": cmd, "reply": msg_prompt}
             return self.process_chat_message(message, override_text=query)
+
+        if cmd in ["/timkiem", "/search", "/find"]:
+            parts_txt = text.split(maxsplit=1)
+            search_query = parts_txt[1].strip() if len(parts_txt) > 1 else ""
+            search_res = search_nutrition_and_workouts(search_query)
+            if chat_id:
+                self.send_message(chat_id, search_res, reply_to_message_id=message_id)
+            return {"status": "success", "command": cmd, "query": search_query, "reply": search_res}
 
         if cmd in ["/log_standard", "/logstandard"]:
             now_dt = datetime.now()
@@ -623,8 +632,148 @@ class TelegramMealBot:
 
             time.sleep(0.5)
 
+def get_ai_cluster_status() -> str:
+    """Check live status of AI Cluster (Cloud Gemini, Home PC GPU via Tailscale, Local Ally X) and loaded VRAM models."""
+    import requests
+    from config.settings import settings
+    from src.analytics.vision_analyst import get_local_llm_endpoints
+
+    cluster_lines = ["🖥️ **TRẠNG THÁI AI CLUSTER & VRAM:**"]
+
+    # 1. Cloud Gemini
+    gemini_key = (getattr(settings, "gemini_api_key", None) or os.getenv("GEMINI_API_KEY", "")).strip()
+    gemini_model = (getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL") or "gemini-3.5-flash").strip()
+    if gemini_key and not gemini_key.startswith("your_"):
+        cluster_lines.append(f"• **Cloud AI:** 🟢 Google Gemini ({gemini_model})")
+    else:
+        cluster_lines.append("• **Cloud AI:** 🔴 Google Gemini (Chưa cấu hình API Key)")
+
+    # 2. Local Ollama Endpoints
+    endpoints = get_local_llm_endpoints()
+    for url in endpoints:
+        is_pc = any(kw in url for kw in ["100.", "192.168", "pc", "tailscale"]) and not any(kw in url for kw in ["localhost", "127.0.0.1"])
+        node_name = "Home PC GPU (Tailscale)" if is_pc else "Local ROG Ally X"
+        try:
+            t0 = time.perf_counter()
+            r_tags = requests.get(f"{url}/api/tags", timeout=(1.5, 2.5))
+            ping_ms = int((time.perf_counter() - t0) * 1000)
+            if r_tags.status_code == 200:
+                installed_models = [m.get("name") for m in r_tags.json().get("models", [])]
+                vram_info = " | VRAM: 0GB (Idle)"
+                try:
+                    r_ps = requests.get(f"{url}/api/ps", timeout=(1.0, 1.5))
+                    if r_ps.status_code == 200:
+                        ps_list = r_ps.json().get("models", [])
+                        if ps_list:
+                            vram_parts = []
+                            for pm in ps_list:
+                                v_gb = round((pm.get("size_vram") or 0) / (1024**3), 1)
+                                vram_parts.append(f"{pm.get('name')} ({v_gb}GB)")
+                            vram_info = f" | Đang nạp: {', '.join(vram_parts)}"
+                except Exception:
+                    pass
+
+                count_models = len(installed_models)
+                cluster_lines.append(f"• **{node_name}:** 🟢 Online ({ping_ms}ms, {count_models} models{vram_info})")
+            else:
+                cluster_lines.append(f"• **{node_name}:** 🟡 HTTP {r_tags.status_code}")
+        except Exception:
+            cluster_lines.append(f"• **{node_name}:** 🔴 Offline / Tắt máy")
+
+    return "\n".join(cluster_lines)
+
+
+def search_nutrition_and_workouts(query: str) -> str:
+    """Search logged meals, nutrition records, and workout activities matching user query."""
+    if not query or not query.strip():
+        return (
+            "🔍 **HƯỚNG DẪN DÙNG LỆNH /TIMKIEM:**\n\n"
+            "Vui lòng gõ kèm từ khóa món ăn hoặc bài tập cần tra cứu. Ví dụ:\n"
+            "• `/timkiem phở bò`\n"
+            "• `/timkiem nước kiềm`\n"
+            "• `/timkiem cơm trắng`\n"
+            "• `/timkiem chạy bộ`"
+        )
+
+    q = query.strip()
+    like_pattern = f"%{q}%"
+
+    meal_rows = []
+    try:
+        from src.db.connection import get_db_connection
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT date, timestamp, dishes, total_calories, protein_g, carb_g, fat_g, short_summary
+                FROM nutrition_logs
+                WHERE dishes LIKE ? OR short_summary LIKE ? OR sleep_risk_assessment LIKE ?
+                ORDER BY id DESC
+                LIMIT 5
+            """, (like_pattern, like_pattern, like_pattern))
+            meal_rows = c.fetchall()
+    except Exception as e:
+        print(f"⚠️ Search nutrition_logs error: {e}")
+
+    act_rows = []
+    try:
+        from src.db.connection import get_db_connection
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT date, activities_summary, total_steps, active_calories
+                FROM daily_metrics
+                WHERE activities_summary LIKE ?
+                ORDER BY date DESC
+                LIMIT 3
+            """, (like_pattern,))
+            act_rows = c.fetchall()
+    except Exception as e:
+        print(f"⚠️ Search activities error: {e}")
+
+    lines = [f"🔍 **KẾT QUẢ TÌM KIẾM CHO: \"{q}\"**\n"]
+
+    if meal_rows:
+        lines.append(f"🍱 **Nhật ký Bữa ăn ({len(meal_rows)} bản ghi gần nhất):**")
+        for row in meal_rows:
+            d_date, d_ts, dishes, cal, p, c_val, f_val, summary = row
+            try:
+                import json
+                d_parsed = json.loads(dishes)
+                dish_text = ", ".join(d_parsed) if isinstance(d_parsed, list) else str(d_parsed)
+            except Exception:
+                dish_text = str(dishes).strip("[]'\"")
+
+            time_part = str(d_ts).split()[-1] if d_ts and len(str(d_ts).split()) > 1 else ""
+            time_str = f" lúc {time_part}" if time_part else ""
+            lines.append(f"• **{d_date}{time_str}:** {dish_text}")
+            lines.append(f"  Calo: ~{cal or 0} kcal | P: {p or 0}g | C: {c_val or 0}g | F: {f_val or 0}g")
+        lines.append("")
+
+    if act_rows:
+        lines.append(f"🏃 **Hoạt động Thể thao ({len(act_rows)} ngày liên quan):**")
+        for a_row in act_rows:
+            a_date, acts_json, steps, act_cals = a_row
+            try:
+                import json
+                acts = json.loads(acts_json) if acts_json else []
+                for act in acts:
+                    name = act.get("name") or act.get("type") or "Bài tập"
+                    dur_m = round((act.get("duration_seconds") or 0) / 60.0, 1)
+                    dist_km = round((act.get("distance_meters") or 0) / 1000.0, 2)
+                    lines.append(f"• **{a_date}:** {name} ({dist_km} km / {dur_m}m / {act.get('calories') or 0} kcal)")
+            except Exception:
+                lines.append(f"• **{a_date}:** Hoạt động Garmin ({act_cals or 0} kcal)")
+        lines.append("")
+
+    if not meal_rows and not act_rows:
+        lines.append(f"ℹ️ Không tìm thấy bữa ăn hoặc bài tập nào khớp với từ khóa \"{q}\".")
+        lines.append("💡 *Mẹo:* Bạn có thể gõ câu hỏi bình thường để AI Coach trả lời ngay.")
+
+    return "\n".join(lines).strip()
+
+
 def get_today_status_summary() -> str:
-    """Fetch quick status summary of today's health metrics and nutrition logs from SQLite."""
+    """Fetch quick status summary of today's health metrics, nutrition logs, and live AI Cluster/VRAM status."""
     from datetime import datetime
     from src.db.connection import get_db_connection
     from src.db.nutrition_repository import get_nutrition_logs_by_date, get_today_nutrition_summary
@@ -658,6 +807,7 @@ def get_today_status_summary() -> str:
         steps_str = "0"
 
     w_eff = get_effective_weight_kg({"weight_kg": row[4] if row else None})
+    ai_cluster_str = get_ai_cluster_status()
 
     lines = [
         f"📊 **TRẠNG THÁI HÔM NAY ({today_str})**",
@@ -671,9 +821,50 @@ def get_today_status_summary() -> str:
         f"• Năng lượng: ~{tot_cal} kcal",
         f"• Macros: Protein {tot_p}g | Carb {tot_c}g | Fat {tot_f}g",
         "",
+        ai_cluster_str,
+        "",
         "💡 *Gửi lệnh `/report` để cập nhật báo cáo 4 thẻ hoàn chỉnh.*"
     ]
     return "\n".join(lines)
+
+
+def register_telegram_bot_commands(bot_token: Optional[str] = None) -> bool:
+    """Register official standardized command menu with Telegram Bot API (setMyCommands)."""
+    import requests
+    from config.settings import settings
+    token = bot_token or getattr(settings, "telegram_bot_token", None) or os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return False
+
+    commands = [
+        {"command": "status", "description": "📊 Trạng thái sức khỏe, AI Cluster & VRAM"},
+        {"command": "chat", "description": "💬 Hỏi đáp & Trò chuyện với AI Coach"},
+        {"command": "report", "description": "📈 Báo cáo phục hồi & dinh dưỡng hoàn chỉnh"},
+        {"command": "quick_log", "description": "✍️ Ghi nhanh bữa ăn qua văn bản"},
+        {"command": "timkiem", "description": "🔍 Tra cứu nhật ký bữa ăn & bài tập"},
+        {"command": "sync", "description": "🔄 Đồng bộ dữ liệu Garmin & Omron"},
+        {"command": "log_standard", "description": "🍱 Nạp ước lượng chuẩn Rest Day"},
+        {"command": "retry_last", "description": "🔁 Phân tích lại bữa ăn gần nhất"},
+        {"command": "help", "description": "❓ Hướng dẫn sử dụng các lệnh"}
+    ]
+
+    try:
+        res = requests.post(
+            f"https://api.telegram.org/bot{token}/setMyCommands",
+            json={"commands": commands},
+            timeout=(10, 20)
+        )
+        data = res.json()
+        if data.get("ok"):
+            print("✅ Successfully registered Telegram Bot command menu!")
+            return True
+        else:
+            print(f"⚠️ Failed to register commands: {data}")
+            return False
+    except Exception as e:
+        print(f"⚠️ Exception registering commands: {e}")
+        return False
+
 
 def process_single_image_file(image_path: str, caption: Optional[str] = None) -> Dict[str, Any]:
     """Helper function to analyze a local image file directly without Telegram API."""

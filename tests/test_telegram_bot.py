@@ -562,6 +562,31 @@ def test_poll_updates_routes_to_process_chat(monkeypatch):
     assert called_msg["text"] == "Đêm qua tôi ngủ có sâu không?"
 
 
+def test_process_command_timkiem(monkeypatch):
+    from src.delivery.telegram_bot import TelegramMealBot
+
+    bot = TelegramMealBot(bot_token="fake_token")
+    mock_send = MagicMock()
+    monkeypatch.setattr(bot, "send_message", mock_send)
+
+    mock_search = MagicMock(return_value="🔍 KẾT QUẢ TÌM KIẾM CHO \"phở bò\":\n• 2026-11-10: 1 bát phở bò tái")
+    monkeypatch.setattr("src.delivery.telegram_bot.search_nutrition_and_workouts", mock_search)
+
+    msg = {
+        "message_id": 777,
+        "chat": {"id": 1022843967},
+        "text": "/timkiem phở bò"
+    }
+
+    res = bot.process_command_message(msg)
+    assert res["status"] == "success"
+    assert res["command"] == "/timkiem"
+    assert res["query"] == "phở bò"
+    assert "phở bò tái" in res["reply"]
+    mock_send.assert_called_once_with(1022843967, res["reply"], reply_to_message_id=777)
+
+
+
 
 
 
