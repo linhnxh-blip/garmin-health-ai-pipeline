@@ -482,6 +482,87 @@ def test_process_command_retry_last(monkeypatch, tmp_path):
     assert mock_send.call_count >= 1
 
 
+def test_process_chat_message(monkeypatch):
+    bot = TelegramMealBot(bot_token="fake_token")
+    mock_send = MagicMock()
+    monkeypatch.setattr(bot, "send_message", mock_send)
+
+    mock_advisor = MagicMock(return_value={
+        "reply_text": "Hôm nay bạn nên nghỉ ngơi hoàn toàn (Rest Day) vì ACWR đang là 1.40.\n\n🤖 AI Engine: Google Gemini 2.5 Flash (Cloud) | ⏱️ 1.20s | 🪙 650 tokens",
+        "model_used": "gemini (gemini-2.5-flash)",
+        "latency_seconds": 1.20
+    })
+    monkeypatch.setattr("src.analytics.chat_advisor.ask_chat_advisor", mock_advisor)
+
+    msg = {
+        "message_id": 999,
+        "chat": {"id": 1022843967},
+        "text": "Hôm nay tôi có nên chạy bộ không?"
+    }
+
+    res = bot.process_chat_message(msg)
+
+    assert res["status"] == "success"
+    assert "Hôm nay bạn nên nghỉ ngơi" in res["reply"]
+    mock_send.assert_called_once()
+    args, kwargs = mock_send.call_args
+    assert args[0] == 1022843967
+    assert "ACWR đang là 1.40" in args[1]
+    assert kwargs.get("reply_to_message_id") == 999
+
+
+def test_process_command_chat_explicit(monkeypatch):
+    bot = TelegramMealBot(bot_token="fake_token")
+    mock_send = MagicMock()
+    monkeypatch.setattr(bot, "send_message", mock_send)
+
+    mock_chat = MagicMock(return_value={"status": "success", "reply": "Tư vấn dinh dưỡng từ AI"})
+    monkeypatch.setattr(bot, "process_chat_message", mock_chat)
+
+    msg = {
+        "message_id": 888,
+        "chat": {"id": 1022843967},
+        "text": "/chat Bữa tối nên ăn món gì?"
+    }
+
+    res = bot.process_command_message(msg)
+    assert res["status"] == "success"
+    mock_chat.assert_called_once_with(msg, override_text="Bữa tối nên ăn món gì?")
+
+
+def test_poll_updates_routes_to_process_chat(monkeypatch):
+    bot = TelegramMealBot(bot_token="fake_token")
+
+    mock_chat = MagicMock(return_value={"status": "success"})
+    monkeypatch.setattr(bot, "process_chat_message", mock_chat)
+
+    mock_get = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.ok = True
+    mock_resp.json.return_value = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 1,
+                "message": {
+                    "message_id": 101,
+                    "chat": {"id": 12345},
+                    "text": "Đêm qua tôi ngủ có sâu không?"
+                }
+            }
+        ]
+    }
+    mock_get.return_value = mock_resp
+
+    with patch("requests.get", mock_get):
+        bot.poll_updates(once=True)
+
+    mock_chat.assert_called_once()
+    called_msg = mock_chat.call_args[0][0]
+    assert called_msg["text"] == "Đêm qua tôi ngủ có sâu không?"
+
+
+
 
 
 

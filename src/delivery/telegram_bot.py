@@ -207,6 +207,50 @@ class TelegramMealBot:
             "reply_text": reply_text
         }
 
+    def process_chat_message(self, message: Dict[str, Any], override_text: Optional[str] = None) -> Dict[str, Any]:
+        """Process natural conversational text messages using AI Sports Physiologist & Coach cascade."""
+        message_id = message.get("message_id")
+        chat_id = message.get("chat", {}).get("id")
+        text = override_text or (message.get("text") or "").strip()
+
+        if not text:
+            return {"status": "ignored", "reason": "empty_text"}
+
+        print(f"💬 Received chat query from chat {chat_id}: '{text[:60]}...'")
+
+        # Send typing action so the user immediately knows the AI is processing
+        if chat_id:
+            try:
+                requests.post(
+                    f"{self.base_url}/sendChatAction",
+                    json={"chat_id": chat_id, "action": "typing"},
+                    timeout=(5, 10)
+                )
+            except Exception:
+                pass
+
+        try:
+            from src.analytics.chat_advisor import ask_chat_advisor
+            res = ask_chat_advisor(text, chat_id=chat_id)
+            reply_text = res.get("reply_text") or "Chào bạn! Mình có thể hỗ trợ gì cho bạn về sức khỏe và tập luyện hôm nay?"
+        except Exception as chat_err:
+            print(f"❌ Error in chat advisor execution: {chat_err}")
+            reply_text = f"⚠️ Rất tiếc, đã xảy ra lỗi khi kết nối AI để trả lời: {chat_err}."
+
+        if chat_id:
+            try:
+                self.send_message(chat_id, reply_text, reply_to_message_id=message_id)
+            except Exception as err:
+                print(f"⚠️ Failed to send Telegram chat reply: {err}")
+
+        return {
+            "status": "success",
+            "query": text,
+            "reply": reply_text,
+            "model_used": res.get("model_used") if 'res' in locals() else None,
+            "latency_seconds": res.get("latency_seconds") if 'res' in locals() else None
+        }
+
     def _run_report_async(self, chat_id: Union[int, str]):
         """Run daily sync, baseline computation, LLM report generation, and Telegram card delivery asynchronously."""
         import threading
@@ -311,12 +355,24 @@ class TelegramMealBot:
                 "• `/retry_last`: Tự động phân tích lại bữa ăn gần nhất bị lỗi hoặc calo mặc định.\n"
                 "• `/log_standard`: Nạp nhanh ước lượng chuẩn Rest Day (2,150 kcal / 122g Protein).\n"
                 "• `/quick_log [mô tả]`: Ghi nhanh bữa ăn qua văn bản (VD: `/quick_log 1 phở bò bắp`).\n"
+                "• `/chat [câu hỏi]`: Trò chuyện trực tiếp với Trợ lý AI Sinh lý học & Phục hồi.\n"
                 "• `/help`: Hiển thị menu hướng dẫn này.\n\n"
+                "💬 **Trò chuyện tự nhiên**: Bạn có thể nhắn tin trực tiếp bất kỳ câu hỏi nào (không cần gõ lệnh), AI sẽ tự động phân tích dựa trên dữ liệu Garmin hôm nay để trả lời bạn ngay!\n\n"
                 "📸 **Gửi ảnh bữa ăn**: Chụp ảnh bữa ăn kèm chú thích để tự động bóc tách Macros & Calo vào DB."
             )
             if chat_id:
                 self.send_message(chat_id, reply, reply_to_message_id=message_id)
             return {"status": "success", "command": cmd, "reply": reply}
+
+        if cmd in ["/chat", "/hoi", "/ask"]:
+            parts_txt = text.split(maxsplit=1)
+            query = parts_txt[1].strip() if len(parts_txt) > 1 else ""
+            if not query:
+                msg_prompt = "💬 Bạn muốn hỏi gì về sức khỏe, bài tập, giấc ngủ hoặc dinh dưỡng hôm nay? Hãy gõ câu hỏi của bạn nhé!"
+                if chat_id:
+                    self.send_message(chat_id, msg_prompt, reply_to_message_id=message_id)
+                return {"status": "prompt", "command": cmd, "reply": msg_prompt}
+            return self.process_chat_message(message, override_text=query)
 
         if cmd in ["/log_standard", "/logstandard"]:
             now_dt = datetime.now()
@@ -547,6 +603,8 @@ class TelegramMealBot:
                                 self.process_command_message(msg)
                             elif "photo" in msg:
                                 self.process_photo_message(msg)
+                            elif text:
+                                self.process_chat_message(msg)
 
                 if once:
                     print("🏁 Finished single update poll (--once). Exiting listener.")
