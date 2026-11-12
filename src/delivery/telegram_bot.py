@@ -351,7 +351,7 @@ class TelegramMealBot:
 
             if not log_desc:
                 msg_prompt = (
-                    "✍️ **HƯỚNG DẪN DÙNG LỆNH /QUICK_LOG:**\n\n"
+                    "✍️ *HƯỚNG DẪN DÙNG LỆNH /QUICK_LOG:*\n\n"
                     "Vui lòng gõ kèm mô tả món ăn. Ví dụ:\n"
                     "`/quick_log 1 phở bò bắp bữa sáng và 1 cơm tấm sườn chả bữa trưa`\n\n"
                     "Hoặc gõ `/log_standard` để nạp ngay ước lượng chuẩn Rest Day (2,150 kcal, 122g P)."

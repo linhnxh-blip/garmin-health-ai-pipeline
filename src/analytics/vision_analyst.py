@@ -189,16 +189,23 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
     model_name = (getattr(settings, "local_llm_model", None) or os.getenv("LOCAL_LLM_MODEL") or "qwen2.5:7b").strip()
 
     prompt = (
-        f"Bạn là chuyên gia dinh dưỡng thể thao. Hãy phân tích bữa ăn sau: \"{meal_text}\".\n"
-        "BẮT BUỘC trả về duy nhất 1 chuỗi JSON thuần túy (không markdown, không bọc ```json) theo đúng cấu trúc schema sau:\n"
+        "Bạn là chuyên gia dinh dưỡng thể thao hàng đầu Việt Nam. "
+        f"Hãy phân tích chi tiết bữa ăn sau của vận động viên: \"{meal_text}\".\n\n"
+        "YÊU CẦU PHÂN TÍCH:\n"
+        "1. Bóc tách từng món ăn cụ thể vào mảng 'dishes' (ví dụ: ['1 bát cơm trắng', 'Canh dưa bò', 'Thịt băm nướng kiểu chả (4 miếng)', 'Chả xương xông (2 miếng)']).\n"
+        "2. Ước lượng chuẩn xác hàm lượng Calories (kcal), Protein (g), Carb (g), Fat (g), Cồn (alcohol_grams).\n"
+        "3. 'summary': Tóm tắt ngắn gọn và rõ ràng tên các món và định lượng calo/macro.\n"
+        "4. 'recovery_impact': Nhận xét chuyên môn sâu về dược lý dinh dưỡng thể thao: nguồn đạm sinh học phục hồi cơ bắp và gân (từ thịt bò, thịt nướng), bù đắp glycogen (từ cơm trắng), men vi sinh tiêu hóa (từ canh dưa chua), và đánh giá tải purine an toàn cho axit uric máu.\n\n"
+        "BẮT BUỘC TRẢ VỀ DUY NHẤT 1 OBJECT JSON THUẦN TÚY (không markdown, không bọc ```json):\n"
         "{\n"
+        "  \"dishes\": [\"món 1\", \"món 2\"],\n"
         "  \"calories\": <số thực calo>,\n"
         "  \"protein\": <số thực gram protein>,\n"
         "  \"carb\": <số thực gram carb>,\n"
         "  \"fat\": <số thực gram fat>,\n"
         "  \"alcohol_grams\": 0.0,\n"
-        "  \"summary\": \"<tóm tắt ngắn gọn món ăn>\",\n"
-        "  \"recovery_impact\": \"<đánh giá phục hồi thể thao, tải purine/axit uric, gân gót và bù nước>\"\n"
+        "  \"summary\": \"<tóm tắt ngắn gọn>\",\n"
+        "  \"recovery_impact\": \"<đánh giá phục hồi thể thao chi tiết>\"\n"
         "}"
     )
 
@@ -213,7 +220,7 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
     }
 
     try:
-        res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(5, 45))
+        res = requests.post(f"{base_url}/api/generate", json=payload, timeout=(5, 60))
         if res.status_code == 200:
             res_data = res.json()
             raw_response = res_data.get("response", "").strip()
@@ -226,9 +233,17 @@ def call_local_ollama_fallback(meal_text: str) -> Optional[Dict[str, Any]]:
                 alc_g = float(parsed.get("alcohol_grams") or 0.0)
                 alc_units = round(alc_g / 10.0, 1)
 
+                dishes_raw = parsed.get("dishes")
+                if isinstance(dishes_raw, list) and dishes_raw:
+                    dishes_list = [str(d).strip() for d in dishes_raw if str(d).strip()]
+                elif isinstance(dishes_raw, str) and dishes_raw:
+                    dishes_list = [d.strip() for d in dishes_raw.split(",") if d.strip()]
+                else:
+                    dishes_list = [meal_text]
+
                 return {
                     "meal_type": "Bữa chính",
-                    "dishes": [meal_text],
+                    "dishes": dishes_list,
                     "total_calories": int(round(cal)),
                     "protein_g": round(p, 1),
                     "carb_g": round(c, 1),
@@ -628,8 +643,7 @@ def analyze_meal_image(
                             config=types.GenerateContentConfig(
                                 system_instruction=VISION_SYSTEM_PROMPT,
                                 temperature=0.2,
-                                response_mime_type="application/json",
-                                http_options=types.HttpOptions(timeout=20.0)
+                                response_mime_type="application/json"
                             )
                         )
                         ai_raw_text = (response.text or "").strip()
@@ -917,8 +931,7 @@ def analyze_quick_log_text(description_text: str, timestamp: Optional[str] = Non
                         config=types.GenerateContentConfig(
                             system_instruction=VISION_SYSTEM_PROMPT,
                             temperature=0.2,
-                            response_mime_type="application/json",
-                            http_options=types.HttpOptions(timeout=20.0)
+                            response_mime_type="application/json"
                         )
                     )
                     text_content = (response.text or "").strip()
